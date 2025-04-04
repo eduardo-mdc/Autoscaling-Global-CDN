@@ -1,6 +1,7 @@
 // main.tf
 provider "azurerm" {
   features {}
+  subscription_id = var.subscription_id
 }
 
 // Resource group for the entire infrastructure
