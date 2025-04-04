@@ -2,3 +2,5 @@
 infrastructure/.terraform.lock.hcl
 
 infrastructure/.terraform/
+
+infrastructure/.env

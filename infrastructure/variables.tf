@@ -102,3 +102,8 @@ variable "subnet_prefixes" {
     asia   = "10.0.3.0/24"
   }
 }
+
+variable "subscription_id" {
+  description = "Azure subscription ID"
+  type        = string
+}
