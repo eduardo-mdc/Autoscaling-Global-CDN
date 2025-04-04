@@ -1,1 +1,1 @@
-# gcp-autoscaling-cdn
+# Global Autoscaling CDN
