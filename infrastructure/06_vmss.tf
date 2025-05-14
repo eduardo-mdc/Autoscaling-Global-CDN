@@ -1,5 +1,3 @@
-// 05_vmss.tf - Virtual Machine Scale Sets with autoscaling
-
 // EUROPE REGION
 
 // Public IP for Europe Load Balancer
@@ -74,12 +72,7 @@ resource "azurerm_linux_virtual_machine_scale_set" "europe_vmss" {
     public_key = file(var.ssh_public_keys[0])
   }
 
-  source_image_reference {
-    publisher = var.os_image.publisher
-    offer     = var.os_image.offer
-    sku       = var.os_image.sku
-    version   = var.os_image.version
-  }
+  source_image_id = data.azurerm_image.europe_image.id
 
   os_disk {
     storage_account_type = var.os_disk_storage_account_type
@@ -98,27 +91,7 @@ resource "azurerm_linux_virtual_machine_scale_set" "europe_vmss" {
     }
   }
 
-  // Create health check endpoint
-  custom_data = base64encode(<<-EOF
-  #!/bin/bash
-  # Try multiple times to account for potential network delays
-  for i in {1..10}; do
-    echo "Attempt $i to update and install packages..."
-    if yum update -y && yum install -y nginx; then
-      echo "Package installation successful!"
-      break
-    fi
-    echo "Package installation failed, retrying in 30 seconds..."
-    sleep 30
-  done
 
-  echo "America CDN Node" > /var/www/html/index.html
-  mkdir -p /var/www/html/health
-  echo "OK" > /var/www/html/health/index.html
-  systemctl enable nginx
-  systemctl start nginx
-  EOF
-  )
 
 
   tags = var.tags
@@ -258,13 +231,7 @@ resource "azurerm_linux_virtual_machine_scale_set" "america_vmss" {
     username   = var.admin_username
     public_key = file(var.ssh_public_keys[0])
   }
-
-  source_image_reference {
-    publisher = var.os_image.publisher
-    offer     = var.os_image.offer
-    sku       = var.os_image.sku
-    version   = var.os_image.version
-  }
+  source_image_id = data.azurerm_image.america_image.id
 
   os_disk {
     storage_account_type = var.os_disk_storage_account_type
@@ -283,28 +250,6 @@ resource "azurerm_linux_virtual_machine_scale_set" "america_vmss" {
     }
   }
 
-  // Create health check endpoint
-  // Update this for each VMSS resource in 05_vmss.tf
-  custom_data = base64encode(<<-EOF
-  #!/bin/bash
-  # Try multiple times to account for potential network delays
-  for i in {1..10}; do
-    echo "Attempt $i to update and install packages..."
-    if yum update -y && yum install -y nginx; then
-      echo "Package installation successful!"
-      break
-    fi
-    echo "Package installation failed, retrying in 30 seconds..."
-    sleep 30
-  done
-
-  echo "America CDN Node" > /var/www/html/index.html
-  mkdir -p /var/www/html/health
-  echo "OK" > /var/www/html/health/index.html
-  systemctl enable nginx
-  systemctl start nginx
-  EOF
-  )
 
   tags = var.tags
 }
@@ -445,12 +390,7 @@ resource "azurerm_linux_virtual_machine_scale_set" "asia_vmss" {
     public_key = file(var.ssh_public_keys[0])
   }
 
-  source_image_reference {
-    publisher = var.os_image.publisher
-    offer     = var.os_image.offer
-    sku       = var.os_image.sku
-    version   = var.os_image.version
-  }
+  source_image_id = data.azurerm_image.asia_image.id
 
   os_disk {
     storage_account_type = var.os_disk_storage_account_type
@@ -469,27 +409,6 @@ resource "azurerm_linux_virtual_machine_scale_set" "asia_vmss" {
     }
   }
 
-  // Create health check endpoint
-  custom_data = base64encode(<<-EOF
-  #!/bin/bash
-  # Try multiple times to account for potential network delays
-  for i in {1..10}; do
-    echo "Attempt $i to update and install packages..."
-    if yum update -y && yum install -y nginx; then
-      echo "Package installation successful!"
-      break
-    fi
-    echo "Package installation failed, retrying in 30 seconds..."
-    sleep 30
-  done
-
-  echo "America CDN Node" > /var/www/html/index.html
-  mkdir -p /var/www/html/health
-  echo "OK" > /var/www/html/health/index.html
-  systemctl enable nginx
-  systemctl start nginx
-  EOF
-  )
 
   tags = var.tags
 }

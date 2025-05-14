@@ -1,5 +1,3 @@
-// 07_networking_fix.tf - Fixes for outbound connectivity
-
 // NAT Gateways for each region to provide outbound internet access
 resource "azurerm_public_ip" "europe_nat_ip" {
   name                = "europe-nat-ip"

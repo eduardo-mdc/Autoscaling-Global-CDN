@@ -1,5 +1,3 @@
-// 07_outputs.tf - Output values
-
 // Admin VM outputs
 output "admin_vm_public_ip" {
   value       = azurerm_public_ip.admin_public_ip.ip_address
@@ -33,27 +31,11 @@ output "traffic_manager_endpoint" {
   description = "FQDN of the Traffic Manager"
 }
 
-// Storage account details
-output "storage_account_name" {
-  value       = azurerm_storage_account.cdn_storage.name
-  description = "Name of the storage account"
-}
-
 output "vmss_instance_count" {
   description = "Number of VMSS instances in each region"
   value = {
     europe = azurerm_linux_virtual_machine_scale_set.europe_vmss.instances
     america = azurerm_linux_virtual_machine_scale_set.america_vmss.instances
     asia = azurerm_linux_virtual_machine_scale_set.asia_vmss.instances
-  }
-}
-
-// Add network interfaces for the VMSS
-output "vmss_network_interface_ids" {
-  description = "Network interface IDs for each VMSS"
-  value = {
-    europe = azurerm_linux_virtual_machine_scale_set.europe_vmss.network_interface
-    america = azurerm_linux_virtual_machine_scale_set.america_vmss.network_interface
-    asia = azurerm_linux_virtual_machine_scale_set.asia_vmss.network_interface
   }
 }
