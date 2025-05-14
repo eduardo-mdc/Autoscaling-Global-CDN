@@ -24,21 +24,11 @@ resource "azurerm_traffic_manager_profile" "global_traffic_manager" {
   tags = var.tags
 }
 
-// Europe endpoint in Traffic Manager
-resource "azurerm_traffic_manager_external_endpoint" "europe_endpoint" {
-  name              = "europe-endpoint"
-  profile_id        = azurerm_traffic_manager_profile.global_traffic_manager.id
-  target            = azurerm_container_app.europe_cdn_app.ingress[0].fqdn
-  weight            = 100
-  enabled           = true
-  geo_mappings      = ["GEO-EU", "GEO-ME"]  // Europe and Middle East
-}
-
 // America endpoint in Traffic Manager
 resource "azurerm_traffic_manager_external_endpoint" "america_endpoint" {
   name              = "america-endpoint"
   profile_id        = azurerm_traffic_manager_profile.global_traffic_manager.id
-  target            = azurerm_container_app.america_cdn_app.ingress[0].fqdn
+  target            = azurerm_public_ip.america_lb_ip.fqdn
   weight            = 100
   enabled           = true
   geo_mappings      = ["GEO-NA", "GEO-SA"]  // North and South America
@@ -48,18 +38,19 @@ resource "azurerm_traffic_manager_external_endpoint" "america_endpoint" {
 resource "azurerm_traffic_manager_external_endpoint" "asia_endpoint" {
   name              = "asia-endpoint"
   profile_id        = azurerm_traffic_manager_profile.global_traffic_manager.id
-  target            = azurerm_container_app.asia_cdn_app.ingress[0].fqdn
+  target            = azurerm_public_ip.asia_lb_ip.fqdn
   weight            = 100
   enabled           = true
   geo_mappings      = ["GEO-AP", "GEO-AS"]  // Asia Pacific and Asia
 }
 
-// Global/Default endpoint (using Europe as default)
-resource "azurerm_traffic_manager_external_endpoint" "default_endpoint" {
-  name              = "default-endpoint"
+// Europe endpoint in Traffic Manager
+resource "azurerm_traffic_manager_external_endpoint" "europe_endpoint" {
+  name              = "europe-endpoint"
   profile_id        = azurerm_traffic_manager_profile.global_traffic_manager.id
-  target            = azurerm_container_app.europe_cdn_app.ingress[0].fqdn
+  target            = azurerm_public_ip.europe_lb_ip.fqdn
   weight            = 100
   enabled           = true
-  geo_mappings      = ["WORLD"]  // Default for regions not covered above
+  geo_mappings      = ["GEO-EU", "GEO-ME", "WORLD"]  // Europe and Middle East and Default (World)
 }
+

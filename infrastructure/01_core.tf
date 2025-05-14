@@ -7,12 +7,13 @@ resource "azurerm_resource_group" "cdn_rg" {
   tags     = var.tags
 }
 
-// Virtual network for admin and services
+// Virtual network for admin (central management)
 resource "azurerm_virtual_network" "cdn_vnet" {
   name                = "cdn-vnet"
   address_space       = var.vnet_address_space
   location            = azurerm_resource_group.cdn_rg.location
   resource_group_name = azurerm_resource_group.cdn_rg.name
+  tags                = var.tags
 }
 
 // Admin subnet
@@ -23,28 +24,55 @@ resource "azurerm_subnet" "admin_subnet" {
   address_prefixes     = [var.subnet_prefixes.admin]
 }
 
-// Europe subnet for zone nodes
+// Europe Virtual Network (West Europe)
+resource "azurerm_virtual_network" "europe_vnet" {
+  name                = "europe-vnet"
+  address_space       = ["10.1.0.0/16"]
+  location            = "westeurope"
+  resource_group_name = azurerm_resource_group.cdn_rg.name
+  tags                = var.tags
+}
+
+// Europe subnet
 resource "azurerm_subnet" "europe_subnet" {
   name                 = "europe-subnet"
   resource_group_name  = azurerm_resource_group.cdn_rg.name
-  virtual_network_name = azurerm_virtual_network.cdn_vnet.name
-  address_prefixes     = [var.subnet_prefixes.europe]
+  virtual_network_name = azurerm_virtual_network.europe_vnet.name
+  address_prefixes     = ["10.1.1.0/24"]
 }
 
-// America subnet for zone nodes
+// America Virtual Network (East US)
+resource "azurerm_virtual_network" "america_vnet" {
+  name                = "america-vnet"
+  address_space       = ["10.2.0.0/16"]
+  location            = "eastus"
+  resource_group_name = azurerm_resource_group.cdn_rg.name
+  tags                = var.tags
+}
+
+// America subnet
 resource "azurerm_subnet" "america_subnet" {
   name                 = "america-subnet"
   resource_group_name  = azurerm_resource_group.cdn_rg.name
-  virtual_network_name = azurerm_virtual_network.cdn_vnet.name
-  address_prefixes     = [var.subnet_prefixes.america]
+  virtual_network_name = azurerm_virtual_network.america_vnet.name
+  address_prefixes     = ["10.2.1.0/24"]
 }
 
-// Asia subnet for zone nodes
+// Asia Virtual Network (Southeast Asia)
+resource "azurerm_virtual_network" "asia_vnet" {
+  name                = "asia-vnet"
+  address_space       = ["10.3.0.0/16"]
+  location            = "southeastasia"
+  resource_group_name = azurerm_resource_group.cdn_rg.name
+  tags                = var.tags
+}
+
+// Asia subnet
 resource "azurerm_subnet" "asia_subnet" {
   name                 = "asia-subnet"
   resource_group_name  = azurerm_resource_group.cdn_rg.name
-  virtual_network_name = azurerm_virtual_network.cdn_vnet.name
-  address_prefixes     = [var.subnet_prefixes.asia]
+  virtual_network_name = azurerm_virtual_network.asia_vnet.name
+  address_prefixes     = ["10.3.1.0/24"]
 }
 
 // Network Security Group for Admin VM
@@ -77,9 +105,9 @@ resource "azurerm_network_security_group" "admin_nsg" {
     destination_port_range     = "*"
     source_address_prefix      = "*"
     destination_address_prefixes = [
-      var.subnet_prefixes.europe,
-      var.subnet_prefixes.america,
-      var.subnet_prefixes.asia
+      "10.1.1.0/24",  // Europe subnet
+      "10.2.1.0/24",  // America subnet
+      "10.3.1.0/24"   // Asia subnet
     ]
   }
 }
@@ -142,6 +170,178 @@ resource "azurerm_network_security_group" "zone_nsg" {
   }
 }
 
+// Regional NSGs for each region
+resource "azurerm_network_security_group" "europe_nsg" {
+  name                = "europe-nsg"
+  location            = "westeurope"
+  resource_group_name = azurerm_resource_group.cdn_rg.name
+
+  // Copy the same rules as zone_nsg
+  security_rule {
+    name                       = "BlockInboundExceptAdmin"
+    priority                   = 4096
+    direction                  = "Inbound"
+    access                     = "Deny"
+    protocol                   = "*"
+    source_port_range          = "*"
+    destination_port_range     = "*"
+    source_address_prefix      = "*"
+    destination_address_prefix = "*"
+  }
+
+  security_rule {
+    name                       = "AllowInboundFromAdmin"
+    priority                   = 100
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "*"
+    source_port_range          = "*"
+    destination_port_range     = "*"
+    source_address_prefix      = var.subnet_prefixes.admin
+    destination_address_prefix = "*"
+  }
+
+  security_rule {
+    name                       = "AllowHTTP"
+    priority                   = 101
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "80"
+    source_address_prefix      = "*"
+    destination_address_prefix = "*"
+  }
+
+  security_rule {
+    name                       = "AllowHTTPS"
+    priority                   = 1001
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "443"
+    source_address_prefix      = "*"
+    destination_address_prefix = "*"
+  }
+
+  tags = var.tags
+}
+
+resource "azurerm_network_security_group" "america_nsg" {
+  name                = "america-nsg"
+  location            = "eastus"
+  resource_group_name = azurerm_resource_group.cdn_rg.name
+
+  // Copy the same rules as zone_nsg
+  security_rule {
+    name                       = "BlockInboundExceptAdmin"
+    priority                   = 4096
+    direction                  = "Inbound"
+    access                     = "Deny"
+    protocol                   = "*"
+    source_port_range          = "*"
+    destination_port_range     = "*"
+    source_address_prefix      = "*"
+    destination_address_prefix = "*"
+  }
+
+  security_rule {
+    name                       = "AllowInboundFromAdmin"
+    priority                   = 100
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "*"
+    source_port_range          = "*"
+    destination_port_range     = "*"
+    source_address_prefix      = var.subnet_prefixes.admin
+    destination_address_prefix = "*"
+  }
+
+  security_rule {
+    name                       = "AllowHTTP"
+    priority                   = 101
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "80"
+    source_address_prefix      = "*"
+    destination_address_prefix = "*"
+  }
+
+  security_rule {
+    name                       = "AllowHTTPS"
+    priority                   = 1001
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "443"
+    source_address_prefix      = "*"
+    destination_address_prefix = "*"
+  }
+
+  tags = var.tags
+}
+
+resource "azurerm_network_security_group" "asia_nsg" {
+  name                = "asia-nsg"
+  location            = "southeastasia"
+  resource_group_name = azurerm_resource_group.cdn_rg.name
+
+  // Copy the same rules as zone_nsg
+  security_rule {
+    name                       = "BlockInboundExceptAdmin"
+    priority                   = 4096
+    direction                  = "Inbound"
+    access                     = "Deny"
+    protocol                   = "*"
+    source_port_range          = "*"
+    destination_port_range     = "*"
+    source_address_prefix      = "*"
+    destination_address_prefix = "*"
+  }
+
+  security_rule {
+    name                       = "AllowInboundFromAdmin"
+    priority                   = 100
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "*"
+    source_port_range          = "*"
+    destination_port_range     = "*"
+    source_address_prefix      = var.subnet_prefixes.admin
+    destination_address_prefix = "*"
+  }
+
+  security_rule {
+    name                       = "AllowHTTP"
+    priority                   = 101
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "80"
+    source_address_prefix      = "*"
+    destination_address_prefix = "*"
+  }
+
+  security_rule {
+    name                       = "AllowHTTPS"
+    priority                   = 1001
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "443"
+    source_address_prefix      = "*"
+    destination_address_prefix = "*"
+  }
+
+  tags = var.tags
+}
+
 // NSG associations for subnets
 resource "azurerm_subnet_network_security_group_association" "admin_nsg_association" {
   subnet_id                 = azurerm_subnet.admin_subnet.id
@@ -150,17 +350,72 @@ resource "azurerm_subnet_network_security_group_association" "admin_nsg_associat
 
 resource "azurerm_subnet_network_security_group_association" "europe_nsg_association" {
   subnet_id                 = azurerm_subnet.europe_subnet.id
-  network_security_group_id = azurerm_network_security_group.zone_nsg.id
+  network_security_group_id = azurerm_network_security_group.europe_nsg.id
 }
 
 resource "azurerm_subnet_network_security_group_association" "america_nsg_association" {
   subnet_id                 = azurerm_subnet.america_subnet.id
-  network_security_group_id = azurerm_network_security_group.zone_nsg.id
+  network_security_group_id = azurerm_network_security_group.america_nsg.id
 }
 
 resource "azurerm_subnet_network_security_group_association" "asia_nsg_association" {
   subnet_id                 = azurerm_subnet.asia_subnet.id
-  network_security_group_id = azurerm_network_security_group.zone_nsg.id
+  network_security_group_id = azurerm_network_security_group.asia_nsg.id
+}
+
+// VNet peering to connect regional networks with admin network
+resource "azurerm_virtual_network_peering" "admin_to_europe" {
+  name                      = "admin-to-europe"
+  resource_group_name       = azurerm_resource_group.cdn_rg.name
+  virtual_network_name      = azurerm_virtual_network.cdn_vnet.name
+  remote_virtual_network_id = azurerm_virtual_network.europe_vnet.id
+  allow_virtual_network_access = true
+  allow_forwarded_traffic   = true
+}
+
+resource "azurerm_virtual_network_peering" "europe_to_admin" {
+  name                      = "europe-to-admin"
+  resource_group_name       = azurerm_resource_group.cdn_rg.name
+  virtual_network_name      = azurerm_virtual_network.europe_vnet.name
+  remote_virtual_network_id = azurerm_virtual_network.cdn_vnet.id
+  allow_virtual_network_access = true
+  allow_forwarded_traffic   = true
+}
+
+resource "azurerm_virtual_network_peering" "admin_to_america" {
+  name                      = "admin-to-america"
+  resource_group_name       = azurerm_resource_group.cdn_rg.name
+  virtual_network_name      = azurerm_virtual_network.cdn_vnet.name
+  remote_virtual_network_id = azurerm_virtual_network.america_vnet.id
+  allow_virtual_network_access = true
+  allow_forwarded_traffic   = true
+}
+
+resource "azurerm_virtual_network_peering" "america_to_admin" {
+  name                      = "america-to-admin"
+  resource_group_name       = azurerm_resource_group.cdn_rg.name
+  virtual_network_name      = azurerm_virtual_network.america_vnet.name
+  remote_virtual_network_id = azurerm_virtual_network.cdn_vnet.id
+  allow_virtual_network_access = true
+  allow_forwarded_traffic   = true
+}
+
+resource "azurerm_virtual_network_peering" "admin_to_asia" {
+  name                      = "admin-to-asia"
+  resource_group_name       = azurerm_resource_group.cdn_rg.name
+  virtual_network_name      = azurerm_virtual_network.cdn_vnet.name
+  remote_virtual_network_id = azurerm_virtual_network.asia_vnet.id
+  allow_virtual_network_access = true
+  allow_forwarded_traffic   = true
+}
+
+resource "azurerm_virtual_network_peering" "asia_to_admin" {
+  name                      = "asia-to-admin"
+  resource_group_name       = azurerm_resource_group.cdn_rg.name
+  virtual_network_name      = azurerm_virtual_network.asia_vnet.name
+  remote_virtual_network_id = azurerm_virtual_network.cdn_vnet.id
+  allow_virtual_network_access = true
+  allow_forwarded_traffic   = true
 }
 
 // Log Analytics workspace for monitoring
