@@ -1,18 +1,11 @@
-// main.tf
-provider "azurerm" {
-  features {}
-  subscription_id = var.subscription_id
-}
+// 01_core.tf - Core infrastructure (resource group, networking)
 
 // Resource group for the entire infrastructure
 resource "azurerm_resource_group" "cdn_rg" {
   name     = var.resource_group_name
   location = var.location
+  tags     = var.tags
 }
-
-// ===================================== //
-// ===== NETWORK INFRASTRUCTURE ======== //
-// ===================================== //
 
 // Virtual network for admin and services
 resource "azurerm_virtual_network" "cdn_vnet" {
@@ -54,7 +47,7 @@ resource "azurerm_subnet" "asia_subnet" {
   address_prefixes     = [var.subnet_prefixes.asia]
 }
 
-// Network Security Group for Admin VM (allows outbound to zone nodes)
+// Network Security Group for Admin VM
 resource "azurerm_network_security_group" "admin_nsg" {
   name                = "admin-nsg"
   location            = azurerm_resource_group.cdn_rg.location
@@ -91,7 +84,7 @@ resource "azurerm_network_security_group" "admin_nsg" {
   }
 }
 
-// Network Security Group for zone nodes (blocks inbound from everywhere except admin)
+// Network Security Group for zone nodes
 resource "azurerm_network_security_group" "zone_nsg" {
   name                = "zone-nsg"
   location            = azurerm_resource_group.cdn_rg.location
@@ -149,124 +142,34 @@ resource "azurerm_network_security_group" "zone_nsg" {
   }
 }
 
-// NSG association for Admin subnet
+// NSG associations for subnets
 resource "azurerm_subnet_network_security_group_association" "admin_nsg_association" {
   subnet_id                 = azurerm_subnet.admin_subnet.id
   network_security_group_id = azurerm_network_security_group.admin_nsg.id
 }
 
-// Public IP for Admin VM
-resource "azurerm_public_ip" "admin_public_ip" {
-  name                = "admin-public-ip"
-  location            = azurerm_resource_group.cdn_rg.location
-  resource_group_name = azurerm_resource_group.cdn_rg.name
-  allocation_method   = "Static"
-  sku                 = "Standard"
+resource "azurerm_subnet_network_security_group_association" "europe_nsg_association" {
+  subnet_id                 = azurerm_subnet.europe_subnet.id
+  network_security_group_id = azurerm_network_security_group.zone_nsg.id
 }
 
-// Network interface for Admin VM
-resource "azurerm_network_interface" "admin_nic" {
-  name                = "admin-nic"
-  location            = azurerm_resource_group.cdn_rg.location
-  resource_group_name = azurerm_resource_group.cdn_rg.name
-
-  ip_configuration {
-    name                          = "internal"
-    subnet_id                     = azurerm_subnet.admin_subnet.id
-    private_ip_address_allocation = "Dynamic"
-    public_ip_address_id          = azurerm_public_ip.admin_public_ip.id
-  }
+resource "azurerm_subnet_network_security_group_association" "america_nsg_association" {
+  subnet_id                 = azurerm_subnet.america_subnet.id
+  network_security_group_id = azurerm_network_security_group.zone_nsg.id
 }
 
-// ===================================== //
-// ===== NETWORK INFRASTRUCTURE ======== //
-// ===================================== //
-
-// ===================================== //
-// ===== ZONE NODES & STORAGE ========== //
-// ===================================== //
-
-// Storage account for managed disk
-resource "azurerm_storage_account" "cdn_storage" {
-  name                     = "cdnmainstorage"  // Must be globally unique
-  resource_group_name      = azurerm_resource_group.cdn_rg.name
-  location                 = azurerm_resource_group.cdn_rg.location
-  account_tier             = "Standard"
-  account_replication_type = "LRS"
+resource "azurerm_subnet_network_security_group_association" "asia_nsg_association" {
+  subnet_id                 = azurerm_subnet.asia_subnet.id
+  network_security_group_id = azurerm_network_security_group.zone_nsg.id
 }
 
-// Admin VM
-resource "azurerm_linux_virtual_machine" "admin_vm" {
-  name                = "admin-vm"
-  resource_group_name = azurerm_resource_group.cdn_rg.name
+// Log Analytics workspace for monitoring
+resource "azurerm_log_analytics_workspace" "log_analytics" {
+  name                = "cdn-log-analytics"
   location            = azurerm_resource_group.cdn_rg.location
-  size                = var.vm_size
-  admin_username      = var.admin_username
-  network_interface_ids = [
-    azurerm_network_interface.admin_nic.id,
-  ]
-
-  dynamic "admin_ssh_key" {
-    for_each = var.ssh_public_keys
-    content {
-      username   = var.admin_username
-      public_key = file(admin_ssh_key.value)
-    }
-  }
-
-  os_disk {
-    caching              = "ReadWrite"
-    storage_account_type = var.os_disk_storage_account_type
-    disk_size_gb         = var.os_disk_size_gb
-  }
-
-  source_image_reference {
-    publisher = var.os_image.publisher
-    offer     = var.os_image.offer
-    sku       = var.os_image.sku
-    version   = var.os_image.version
-  }
+  resource_group_name = azurerm_resource_group.cdn_rg.name
+  sku                 = "PerGB2018"
+  retention_in_days   = 30
 
   tags = var.tags
 }
-
-// Managed disk for master data
-resource "azurerm_managed_disk" "master_disk" {
-  name                 = "master-disk"
-  location             = azurerm_resource_group.cdn_rg.location
-  resource_group_name  = azurerm_resource_group.cdn_rg.name
-  storage_account_type = var.master_disk_storage_account_type
-  create_option        = "Empty"
-  disk_size_gb         = var.master_disk_size_gb
-  
-  tags = var.tags
-}
-
-// Attach the managed disk to admin VM
-resource "azurerm_virtual_machine_data_disk_attachment" "master_disk_attachment" {
-  managed_disk_id    = azurerm_managed_disk.master_disk.id
-  virtual_machine_id = azurerm_linux_virtual_machine.admin_vm.id
-  lun                = "10"
-  caching            = "ReadOnly"  // ReadOnly for the master disk
-}
-
-// ===================================== //
-// ===== ZONE NODES & STORAGE ========== //
-// ===================================== //
-
-// ===================================== //
-// ===== OUTPUTS ======================= //
-// ===================================== //
-
-// Outputs
-output "admin_vm_public_ip" {
-  value = azurerm_public_ip.admin_public_ip.ip_address
-}
-
-output "admin_vm_private_ip" {
-  value = azurerm_network_interface.admin_nic.private_ip_address
-}
-
-// ===================================== //
-// ===== OUTPUTS ======================= //
-// ===================================== //

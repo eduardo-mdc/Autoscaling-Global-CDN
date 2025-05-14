@@ -1,6 +1,31 @@
-// variables.tf Terraform variables for Azure CDN infrastructure, dont change values here, define them in terraform.tfvars file
-// or pass them as command line arguments when running Terraform commands
+// variables.tf - Variables for the Terraform configuration
 
+variable "subscription_id" {
+  description = "Azure subscription ID"
+  type        = string
+}
+
+
+// Available regions for deployment grouped by continent
+// Europe
+// "northeurope"   - North Europe (Ireland)
+// "westeurope"    - West Europe (Netherlands)
+// "uksouth"       - UK South
+// "ukwest"        - UK West
+
+// America
+// "eastus"        - East US (Virginia)
+// "eastus2"       - East US 2 (Virginia)
+// "centralus"     - Central US (Iowa)
+// "westus"        - West US (California)
+// "westus2"       - West US 2 (Washington)
+// "westus3"       - West US 3 (Arizona)
+
+// Asia
+// "eastasia"      - East Asia (Hong Kong)
+// "southeastasia" - Southeast Asia (Singapore)
+// "japaneast"     - Japan East (Tokyo)
+// "australiaeast" - Australia East (New South Wales)
 variable "location" {
   description = "Default Azure region"
   type        = string
@@ -52,8 +77,9 @@ variable "tags" {
   type        = map(string)
   default = {
     environment = "production"
-    role        = "admin"
+    role        = "cdn"
     project     = "global-cdn"
+    owner       = "infrastructure-team"
   }
 }
 
@@ -69,14 +95,6 @@ variable "os_disk_size_gb" {
   default     = 70
 }
 
-// "os_disk_storage_account_type" defines the type of storage account for the OS disk
-// Available storage account types
-// "Standard_LRS" - Standard Locally Redundant Storage (LRS)
-// "Standard_GRS" - Standard Geo-Redundant Storage (GRS)
-// "Standard_RAGRS" - Standard Read-Access Geo-Redundant Storage (RA-GRS)
-// "Standard_ZRS" - Standard Zone-Redundant Storage (ZRS)
-// "Premium_LRS" - Premium Locally Redundant Storage (LRS)
-// "Premium_ZRS" - Premium Zone-Redundant Storage (ZRS)
 variable "os_disk_storage_account_type" {
   description = "Storage account type for OS disk"
   type        = string
@@ -98,20 +116,45 @@ variable "vnet_address_space" {
 variable "subnet_prefixes" {
   description = "Address prefixes for subnets"
   type = object({
-    admin  = string
-    europe = string
+    admin   = string
+    europe  = string
     america = string
-    asia   = string
+    asia    = string
   })
   default = {
-    admin  = "10.0.0.0/24"
-    europe = "10.0.1.0/24"
+    admin   = "10.0.0.0/24"
+    europe  = "10.0.1.0/24"
     america = "10.0.2.0/24"
-    asia   = "10.0.3.0/24"
+    asia    = "10.0.3.0/24"
   }
 }
 
-variable "subscription_id" {
-  description = "Azure subscription ID"
+variable "container_image" {
+  description = "Docker image for the CDN container"
   type        = string
+  default     = "nginx:latest"  // Replace with your custom CDN container image
+}
+
+variable "container_cpu" {
+  description = "CPU allocation for containers (in cores)"
+  type        = number
+  default     = 0.5
+}
+
+variable "container_memory" {
+  description = "Memory allocation for containers"
+  type        = string
+  default     = "1Gi"
+}
+
+variable "min_replicas" {
+  description = "Minimum number of container replicas"
+  type        = number
+  default     = 1
+}
+
+variable "max_replicas" {
+  description = "Maximum number of container replicas"
+  type        = number
+  default     = 5
 }
