@@ -1,0 +1,37 @@
+---
+- name: Set up base image for CDN
+  hosts: all
+  become: yes
+  tasks:
+    - name: Install nginx with minimal updates
+      yum:
+        name: nginx
+        state: present
+        update_cache: yes
+        # Update only repos needed for nginx, not the entire system
+        disablerepo: "*"
+        enablerepo: "rhel-9-for-x86_64-baseos-rhui-rpms,rhel-9-for-x86_64-appstream-rhui-rpms"
+
+    - name: Create web content directory structure
+      file:
+        path: /var/www/html/health
+        state: directory
+        mode: '0755'
+
+    - name: Create index page
+      copy:
+        content: "<h1>CDN Node</h1>"
+        dest: /var/www/html/index.html
+        mode: '0644'
+
+    - name: Create health check page
+      copy:
+        content: "OK"
+        dest: /var/www/html/health/index.html
+        mode: '0644'
+
+    - name: Enable nginx service
+      service:
+        name: nginx
+        enabled: yes
+        state: started
