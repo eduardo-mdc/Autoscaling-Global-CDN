@@ -1,10 +1,3 @@
-// variables.tf - Variables for the Terraform configuration
-
-variable "subscription_id" {
-  description = "Azure subscription ID"
-  type        = string
-}
-
 
 // Available regions for deployment grouped by continent
 // Europe

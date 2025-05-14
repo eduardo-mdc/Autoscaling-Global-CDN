@@ -1,4 +1,4 @@
-// 02_storage.tf - Storage accounts and shares
+// 02_storage.tf - Simplified storage with master disk
 
 // Storage account for master content
 resource "azurerm_storage_account" "cdn_storage" {
@@ -7,32 +7,18 @@ resource "azurerm_storage_account" "cdn_storage" {
   location                 = azurerm_resource_group.cdn_rg.location
   account_tier             = "Standard"
   account_replication_type = "LRS"
-  min_tls_version          = "TLS1_2"  // Force minimum TLS version instead
+  min_tls_version          = "TLS1_2"
 
-  // Ensure storage account access is restricted to trusted networks
-  network_rules {
-    default_action = "Deny"
-    ip_rules       = ["0.0.0.0/0"]  // Replace with your allowed IP ranges
-    virtual_network_subnet_ids = [
-      azurerm_subnet.admin_subnet.id
-    ]
-  }
+  // No network rules - accessible from anywhere
 
   tags = var.tags
 }
 
-// File share for content distribution
-resource "azurerm_storage_share" "cdn_share" {
-  name                 = "cdnshare"
-  storage_account_name = azurerm_storage_account.cdn_storage.name
-  quota                = 100  // GB
-}
-
-// Container for blob storage (optional, for larger static assets)
+// Container for blob storage
 resource "azurerm_storage_container" "cdn_assets" {
   name                  = "assets"
   storage_account_name  = azurerm_storage_account.cdn_storage.name
-  container_access_type = "private"
+  container_access_type = "blob"  // Public access for CDN resources
 }
 
 // Master disk for admin VM
