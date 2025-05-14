@@ -45,14 +45,6 @@ resource_group_name = "cdn-resource-group"
 // "Standard_F2s_v2" - 2 vCPU, 4GB RAM
 vm_size = "Standard_B2s"
 
-os_image = {
-    publisher = "RedHat"
-    offer     = "RHEL"
-    sku       = "9"
-    version   = "latest"
-}
-
-admin_username = "admin"
 ssh_public_keys = [
   "~/.ssh/id_rsa.pub",
   # Add additional SSH public key paths as needed
@@ -70,16 +62,7 @@ tags = {
   owner       = "infrastructure-team"
 }
 
-// "os_disk_storage_account_type" defines the type of storage account for the OS disk
-// Available storage account types
-// "Standard_LRS" - Standard Locally Redundant Storage (LRS)
-// "Standard_GRS" - Standard Geo-Redundant Storage (GRS)
-// "Standard_RAGRS" - Standard Read-Access Geo-Redundant Storage (RA-GRS)
-// "Standard_ZRS" - Standard Zone-Redundant Storage (ZRS)
-// "Premium_LRS" - Premium Locally Redundant Storage (LRS)
-// "Premium_ZRS" - Premium Zone-Redundant Storage (ZRS)
-os_disk_storage_account_type = "Standard_LRS"
-os_disk_size_gb = 30
+
 
 master_disk_storage_account_type = "Premium_LRS"
 master_disk_size_gb = 100

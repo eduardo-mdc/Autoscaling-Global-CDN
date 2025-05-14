@@ -100,7 +100,7 @@ resource "azurerm_network_security_group" "zone_nsg" {
   // Block inbound from everywhere except admin
   security_rule {
     name                       = "BlockInboundExceptAdmin"
-    priority                   = 100
+    priority                   = 4096
     direction                  = "Inbound"
     access                     = "Deny"
     protocol                   = "*"
@@ -113,7 +113,7 @@ resource "azurerm_network_security_group" "zone_nsg" {
   // Allow inbound from admin subnet
   security_rule {
     name                       = "AllowInboundFromAdmin"
-    priority                   = 99  // Higher priority than the deny rule
+    priority                   = 100  // Higher priority than the deny rule
     direction                  = "Inbound"
     access                     = "Allow"
     protocol                   = "*"
@@ -126,7 +126,7 @@ resource "azurerm_network_security_group" "zone_nsg" {
   // Allow HTTP/HTTPS inbound for external users
   security_rule {
     name                       = "AllowHTTP"
-    priority                   = 1000
+    priority                   = 101
     direction                  = "Inbound"
     access                     = "Allow"
     protocol                   = "Tcp"

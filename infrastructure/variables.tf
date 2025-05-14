@@ -28,9 +28,9 @@ variable "os_image" {
     version   = string
   })
   default = {
-    publisher = "Canonical"
-    offer     = "UbuntuServer"
-    sku       = "18.04-LTS"
+    publisher = "RedHat"
+    offer     = "RHEL"
+    sku       = "9-lvm-gen2"
     version   = "latest"
   }
 }
@@ -38,7 +38,7 @@ variable "os_image" {
 variable "admin_username" {
   description = "Admin username for VMs"
   type        = string
-  default     = "adminuser"
+  default     = "admincdn"
 }
 
 variable "ssh_public_keys" {
@@ -66,13 +66,21 @@ variable "master_disk_size_gb" {
 variable "os_disk_size_gb" {
   description = "Size of the OS disk in GB"
   type        = number
-  default     = 30
+  default     = 70
 }
 
+// "os_disk_storage_account_type" defines the type of storage account for the OS disk
+// Available storage account types
+// "Standard_LRS" - Standard Locally Redundant Storage (LRS)
+// "Standard_GRS" - Standard Geo-Redundant Storage (GRS)
+// "Standard_RAGRS" - Standard Read-Access Geo-Redundant Storage (RA-GRS)
+// "Standard_ZRS" - Standard Zone-Redundant Storage (ZRS)
+// "Premium_LRS" - Premium Locally Redundant Storage (LRS)
+// "Premium_ZRS" - Premium Zone-Redundant Storage (ZRS)
 variable "os_disk_storage_account_type" {
   description = "Storage account type for OS disk"
   type        = string
-  default     = "Premium_LRS"
+  default     = "Standard_LRS"
 }
 
 variable "master_disk_storage_account_type" {

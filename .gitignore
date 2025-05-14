@@ -4,3 +4,7 @@ infrastructure/.terraform.lock.hcl
 infrastructure/.terraform/
 
 infrastructure/.env
+/infrastructure/.terraform.tfstate.lock.info
+/infrastructure/terraform.tfstate
+/infrastructure/terraform.tfstate.backup
+/infrastructure/tfplan
