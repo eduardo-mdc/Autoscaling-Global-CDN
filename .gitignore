@@ -8,4 +8,4 @@ infrastructure/.env
 /infrastructure/terraform.tfstate
 /infrastructure/terraform.tfstate.backup
 /infrastructure/tfplan
-/infrastructure/azure.tf
+/infrastructure/secret-vars.tf
