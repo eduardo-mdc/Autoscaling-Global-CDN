@@ -1,24 +1,4 @@
 
-// Available regions for deployment grouped by continent
-// Europe
-// "northeurope"   - North Europe (Ireland)
-// "westeurope"    - West Europe (Netherlands)
-// "uksouth"       - UK South
-// "ukwest"        - UK West
-
-// America
-// "eastus"        - East US (Virginia)
-// "eastus2"       - East US 2 (Virginia)
-// "centralus"     - Central US (Iowa)
-// "westus"        - West US (California)
-// "westus2"       - West US 2 (Washington)
-// "westus3"       - West US 3 (Arizona)
-
-// Asia
-// "eastasia"      - East Asia (Hong Kong)
-// "southeastasia" - Southeast Asia (Singapore)
-// "japaneast"     - Japan East (Tokyo)
-// "australiaeast" - Australia East (New South Wales)
 variable "location" {
   description = "Default Azure region"
   type        = string
@@ -31,8 +11,20 @@ variable "resource_group_name" {
   default     = "cdn-resource-group"
 }
 
+variable "tags" {
+  description = "Tags to apply to resources"
+  type        = map(string)
+  default = {
+    environment = "production"
+    role        = "cdn"
+    project     = "global-cdn"
+    owner       = "infrastructure-team"
+  }
+}
+
+// Admin VM Variables
 variable "vm_size" {
-  description = "Size of the virtual machine"
+  description = "Size of the admin virtual machine"
   type        = string
   default     = "Standard_B2s"
 }
@@ -65,43 +57,9 @@ variable "ssh_public_keys" {
   default     = ["~/.ssh/id_rsa.pub"]
 }
 
-variable "tags" {
-  description = "Tags to apply to resources"
-  type        = map(string)
-  default = {
-    environment = "production"
-    role        = "cdn"
-    project     = "global-cdn"
-    owner       = "infrastructure-team"
-  }
-}
-
-variable "master_disk_size_gb" {
-  description = "Size of the master data disk in GB"
-  type        = number
-  default     = 100
-}
-
-variable "os_disk_size_gb" {
-  description = "Size of the OS disk in GB"
-  type        = number
-  default     = 70
-}
-
-variable "os_disk_storage_account_type" {
-  description = "Storage account type for OS disk"
-  type        = string
-  default     = "Standard_LRS"
-}
-
-variable "master_disk_storage_account_type" {
-  description = "Storage account type for master disk"
-  type        = string
-  default     = "Standard_LRS"
-}
-
+// Network Variables
 variable "vnet_address_space" {
-  description = "Address space for the virtual network"
+  description = "Address space for the admin virtual network"
   type        = list(string)
   default     = ["10.0.0.0/16"]
 }
@@ -116,30 +74,13 @@ variable "subnet_prefixes" {
   })
   default = {
     admin   = "10.0.0.0/24"
-    europe  = "10.0.1.0/24"
-    america = "10.0.2.0/24"
-    asia    = "10.0.3.0/24"
+    europe  = "10.1.1.0/24"
+    america = "10.2.1.0/24"
+    asia    = "10.3.1.0/24"
   }
 }
 
-variable "container_image" {
-  description = "Docker image for the CDN container"
-  type        = string
-  default     = "nginx:latest"  // Replace with your custom CDN container image
-}
-
-variable "container_cpu" {
-  description = "CPU allocation for containers (in cores)"
-  type        = number
-  default     = 0.5
-}
-
-variable "container_memory" {
-  description = "Memory allocation for containers"
-  type        = string
-  default     = "1Gi"
-}
-
+// Container Apps Variables
 variable "min_replicas" {
   description = "Minimum number of container replicas"
   type        = number
@@ -150,4 +91,47 @@ variable "max_replicas" {
   description = "Maximum number of container replicas"
   type        = number
   default     = 5
+}
+
+variable "cpu" {
+  description = "CPU allocation for container apps (in whole cores)"
+  type        = number
+  default     = 0.5
+}
+
+variable "memory" {
+  description = "Memory allocation for container apps (in GB)"
+  type        = string
+  default     = "1Gi"
+}
+
+// Regional Configuration
+variable "regions" {
+  description = "Configuration for each region"
+  type = map(object({
+    location = string
+    vnet_address_space = string
+    subnet_prefix = string
+    container_apps_subnet_prefix = string
+  }))
+  default = {
+    europe = {
+      location = "westeurope"
+      vnet_address_space = "10.1.0.0/16"
+      subnet_prefix = "10.1.1.0/24"
+      container_apps_subnet_prefix = "10.1.2.0/23"  // /23 subnet for Container Apps (512 IPs)
+    }
+    america = {
+      location = "eastus"
+      vnet_address_space = "10.2.0.0/16"
+      subnet_prefix = "10.2.1.0/24"
+      container_apps_subnet_prefix = "10.2.2.0/23"  // /23 subnet for Container Apps (512 IPs)
+    }
+    asia = {
+      location = "southeastasia"
+      vnet_address_space = "10.3.0.0/16"
+      subnet_prefix = "10.3.1.0/24"
+      container_apps_subnet_prefix = "10.3.2.0/23"  // /23 subnet for Container Apps (512 IPs)
+    }
+  }
 }
