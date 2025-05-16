@@ -1,56 +1,51 @@
-// outputs.tf - Output values after deployment (simplified)
-
-// Admin VM outputs
-output "admin_vm_public_ip" {
-  value       = azurerm_public_ip.admin_public_ip.ip_address
-  description = "Public IP address of the admin VM"
+output "europe_alb_dns" {
+  description = "ALB DNS name in eu-west-1"
+  value       = module.ecs_europe.alb_dns_name
 }
 
-output "admin_vm_private_ip" {
-  value       = azurerm_network_interface.admin_nic.private_ip_address
-  description = "Private IP address of the admin VM"
+output "america_alb_dns" {
+  description = "ALB DNS name in us-east-1"
+  value       = module.ecs_america.alb_dns_name
 }
 
-// Container Apps outputs
-output "europe_container_app_url" {
-  value       = "https://${azurerm_container_app.europe_app.ingress[0].fqdn}"
-  description = "URL of the Europe Container App"
+output "asia_alb_dns" {
+  description = "ALB DNS name in ap-southeast-1"
+  value       = module.ecs_asia.alb_dns_name
 }
 
-output "america_container_app_url" {
-  value       = "https://${azurerm_container_app.america_app.ingress[0].fqdn}"
-  description = "URL of the America Container App"
+
+# ECS cluster & service outputs
+output "europe_cluster_id" {
+  description = "ECS Cluster ID in eu-west-1"
+  value       = module.ecs_europe.cluster_id
 }
 
-output "asia_container_app_url" {
-  value       = "https://${azurerm_container_app.asia_app.ingress[0].fqdn}"
-  description = "URL of the Asia Container App"
+output "europe_service_arn" {
+  description = "ECS Service ARN in eu-west-1"
+  value       = module.ecs_europe.service_arn
 }
 
-// Traffic manager output
-output "traffic_manager_url" {
-  value       = "https://${azurerm_traffic_manager_profile.global_traffic_manager.fqdn}"
-  description = "Global Traffic Manager URL"
+# Repeat for the other regions…
+output "america_cluster_id" {
+  value = module.ecs_america.cluster_id
+}
+output "america_service_arn" {
+  value = module.ecs_america.service_arn
 }
 
-// Container Apps Environment outputs
-output "europe_container_app_environment_id" {
-  value       = azurerm_container_app_environment.europe.id
-  description = "ID of the Europe Container App Environment"
+output "asia_cluster_id" {
+  value = module.ecs_asia.cluster_id
+}
+output "asia_service_arn" {
+  value = module.ecs_asia.service_arn
 }
 
-output "america_container_app_environment_id" {
-  value       = azurerm_container_app_environment.america.id
-  description = "ID of the America Container App Environment"
+output "admin_public_ip" {
+  description = "Public IP of the Admin EC2 host"
+  value       = module.admin.admin_public_ip
 }
 
-output "asia_container_app_environment_id" {
-  value       = azurerm_container_app_environment.asia.id
-  description = "ID of the Asia Container App Environment"
-}
-
-// Resource Group output
-output "resource_group_id" {
-  value       = azurerm_resource_group.cdn_rg.id
-  description = "ID of the main resource group"
+output "alb_endpoints" {
+  description = "Map of ALB DNS names by region"
+  value       = module.traffic.alb_endpoints
 }

@@ -1,19 +1,29 @@
-// providers.tf - Configure providers and basic settings
-provider "azurerm" {
-  features {}
-  subscription_id = var.subscription_id
-}
-
 terraform {
+  required_version = ">= 1.0.0"
   required_providers {
-    azurerm = {
-      source  = "hashicorp/azurerm"
-      version = "~> 4.28.0"
-    }
-    null = {
-      source  = "hashicorp/null"
-      version = "~> 3.2.0"
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 4.0"
     }
   }
-  required_version = ">= 1.0.0"
+}
+
+# one credentials profile for all regions:
+#   aws configure --profile default
+provider "aws" {
+  alias   = "europe"
+  region  = "eu-west-1"
+  profile = "default"
+}
+
+provider "aws" {
+  alias   = "america"
+  region  = "us-east-1"
+  profile = "default"
+}
+
+provider "aws" {
+  alias   = "asia"
+  region  = "ap-southeast-1"
+  profile = "default"
 }
