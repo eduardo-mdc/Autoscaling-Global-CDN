@@ -1,222 +1,121 @@
-// Resource group for the entire infrastructure
-resource "azurerm_resource_group" "cdn_rg" {
-  name     = var.resource_group_name
-  location = var.location
-  tags     = var.tags
+locals {
+  regions = {
+    europe  = "eu-west-1"
+    america = "us-east-1"
+    asia    = "ap-southeast-1"
+  }
 }
 
-// Log Analytics workspace for monitoring
-resource "azurerm_log_analytics_workspace" "log_analytics" {
-  name                = "cdn-log-analytics"
-  location            = azurerm_resource_group.cdn_rg.location
-  resource_group_name = azurerm_resource_group.cdn_rg.name
-  sku                 = "PerGB2018"
-  retention_in_days   = 30
+
+# -------------------------------------------------------------------
+# Admin host module (Europe-only)
+# -------------------------------------------------------------------
+module "admin" {
+  source              = "./modules/admin"
+  providers           = { aws = aws.europe }
+  resource_group_name = var.resource_group_name
+  ssh_public_key_path = var.ssh_public_key_path
+  admin_username      = var.admin_username
   tags                = var.tags
+
+  vpc_id    = module.network_europe.vpc_id
+  subnet_id = module.network_europe.subnet_ids[0]
 }
 
-// Container Apps Environments - One for each region
-resource "azurerm_container_app_environment" "europe" {
-  name                       = "europe-container-env"
-  location                   = var.regions.europe.location
-  resource_group_name        = azurerm_resource_group.cdn_rg.name
-  log_analytics_workspace_id = azurerm_log_analytics_workspace.log_analytics.id
-  infrastructure_subnet_id   = azurerm_subnet.europe_container_apps_subnet.id
-  tags                       = var.tags
+
+# -------------------------------------------------------------------
+# STEP 1: network in each region
+# -------------------------------------------------------------------
+module "network_europe" {
+  source              = "./modules/network"
+  providers           = { aws = aws.europe }
+  resource_group_name = var.resource_group_name
+  admin_sg_id         = module.admin.admin_sg_id
+}
+module "network_america" {
+  source              = "./modules/network"
+  providers           = { aws = aws.america }
+  resource_group_name = var.resource_group_name
+  admin_sg_id         = module.admin.admin_sg_id
 }
 
-resource "azurerm_container_app_environment" "america" {
-  name                       = "america-container-env"
-  location                   = var.regions.america.location
-  resource_group_name        = azurerm_resource_group.cdn_rg.name
-  log_analytics_workspace_id = azurerm_log_analytics_workspace.log_analytics.id
-  infrastructure_subnet_id   = azurerm_subnet.america_container_apps_subnet.id
-  tags                       = var.tags
+module "network_asia" {
+  source              = "./modules/network"
+  providers           = { aws = aws.asia }
+  resource_group_name = var.resource_group_name
+  admin_sg_id         = module.admin.admin_sg_id
 }
 
-resource "azurerm_container_app_environment" "asia" {
-  name                       = "asia-container-env"
-  location                   = var.regions.asia.location
-  resource_group_name        = azurerm_resource_group.cdn_rg.name
-  log_analytics_workspace_id = azurerm_log_analytics_workspace.log_analytics.id
-  infrastructure_subnet_id   = azurerm_subnet.asia_container_apps_subnet.id
-  tags                       = var.tags
+# -------------------------------------------------------------------
+# STEP 2: ECS in each region, using network outputs
+# -------------------------------------------------------------------
+module "ecs_europe" {
+  source                  = "./modules/ecs"
+  providers               = { aws = aws.europe }
+  resource_group_name     = var.resource_group_name
+  cpu                     = var.cpu
+  memory                  = var.memory
+  min_replicas            = var.min_replicas
+  max_replicas            = var.max_replicas
+  request_count_threshold = var.request_count_threshold
+
+  vpc_id      = module.network_europe.vpc_id
+  subnet_ids  = module.network_europe.subnet_ids
+  alb_sg_id   = module.network_europe.alb_sg_id
+  region_name = "eu-west-1"
+  instance_sg_id       =  module.network_europe.ecs_instance_sg_id
+  admin_key_name       =  module.admin.admin_key_name
 }
 
-// Container Apps - One for each region using public DockerHub nginx image
-resource "azurerm_container_app" "europe_app" {
-  name                         = "europe-cdn-app"
-  container_app_environment_id = azurerm_container_app_environment.europe.id
-  resource_group_name          = azurerm_resource_group.cdn_rg.name
-  revision_mode                = "Multiple"
+module "ecs_america" {
+  source                  = "./modules/ecs"
+  providers               = { aws = aws.america }
+  resource_group_name     = var.resource_group_name
+  cpu                     = var.cpu
+  memory                  = var.memory
+  min_replicas            = var.min_replicas
+  max_replicas            = var.max_replicas
+  request_count_threshold = var.request_count_threshold
 
-  // Required secret for http_scale_rule authentication
-  secret {
-    name  = "dummy-secret"
-    value = "dummy-value"
-  }
-
-  ingress {
-    external_enabled = true
-    target_port      = 80
-    traffic_weight {
-      latest_revision = true
-      percentage      = 100
-    }
-  }
-
-  template {
-    container {
-      name   = "europe-cdn-container"
-      image  = "nginx:latest"
-      cpu    = var.cpu
-      memory = var.memory
-
-      env {
-        name  = "REGION"
-        value = "Europe"
-      }
-
-      liveness_probe {
-        transport       = "HTTP"
-        port            = 80
-        path            = "/"
-        interval_seconds = 30
-        timeout         = 1
-        failure_count_threshold = 3
-      }
-    }
-
-    min_replicas = var.min_replicas
-    max_replicas = var.max_replicas
-
-    http_scale_rule {
-      name                = "http-scale-rule"
-      concurrent_requests = 10
-      authentication {
-        secret_name       = "dummy-secret"
-        trigger_parameter = "triggerName"
-      }
-    }
-  }
-
-  tags = var.tags
+  vpc_id      = module.network_america.vpc_id
+  subnet_ids  = module.network_america.subnet_ids
+  alb_sg_id   = module.network_america.alb_sg_id
+  region_name = "us-east-1"
+  instance_sg_id       =  module.network_america.ecs_instance_sg_id
+  admin_key_name       =  module.admin.admin_key_name
 }
 
-resource "azurerm_container_app" "america_app" {
-  name                         = "america-cdn-app"
-  container_app_environment_id = azurerm_container_app_environment.america.id
-  resource_group_name          = azurerm_resource_group.cdn_rg.name
-  revision_mode                = "Multiple"
+module "ecs_asia" {
+  source                  = "./modules/ecs"
+  providers               = { aws = aws.asia }
+  resource_group_name     = var.resource_group_name
+  cpu                     = var.cpu
+  memory                  = var.memory
+  min_replicas            = var.min_replicas
+  max_replicas            = var.max_replicas
+  request_count_threshold = var.request_count_threshold
 
-  // Required secret for http_scale_rule authentication
-  secret {
-    name  = "dummy-secret"
-    value = "dummy-value"
-  }
-
-  ingress {
-    external_enabled = true
-    target_port      = 80
-    traffic_weight {
-      latest_revision = true
-      percentage      = 100
-    }
-  }
-
-  template {
-    container {
-      name   = "america-cdn-container"
-      image  = "nginx:latest"
-      cpu    = var.cpu
-      memory = var.memory
-
-      env {
-        name  = "REGION"
-        value = "America"
-      }
-
-      liveness_probe {
-        transport       = "HTTP"
-        port            = 80
-        path            = "/"
-        interval_seconds = 30
-        timeout         = 1
-        failure_count_threshold = 3
-      }
-    }
-
-    min_replicas = var.min_replicas
-    max_replicas = var.max_replicas
-
-    http_scale_rule {
-      name                = "http-scale-rule"
-      concurrent_requests = 10
-      authentication {
-        secret_name       = "dummy-secret"
-        trigger_parameter = "triggerName"
-      }
-    }
-  }
-
-  tags = var.tags
+  vpc_id      = module.network_asia.vpc_id
+  subnet_ids  = module.network_asia.subnet_ids
+  alb_sg_id   = module.network_asia.alb_sg_id
+  region_name = "ap-southeast-1"
+  instance_sg_id       =  module.network_asia.ecs_instance_sg_id
+  admin_key_name       =  module.admin.admin_key_name
 }
 
-resource "azurerm_container_app" "asia_app" {
-  name                         = "asia-cdn-app"
-  container_app_environment_id = azurerm_container_app_environment.asia.id
-  resource_group_name          = azurerm_resource_group.cdn_rg.name
-  revision_mode                = "Multiple"
 
-  // Required secret for http_scale_rule authentication
-  secret {
-    name  = "dummy-secret"
-    value = "dummy-value"
+# -------------------------------------------------------------------
+# Traffic (Route53) module
+# -------------------------------------------------------------------
+module "traffic" {
+  source              = "./modules/traffic"
+  resource_group_name = var.resource_group_name
+
+  alb_endpoints = {
+    europe  = module.ecs_europe.alb_dns_name
+    america = module.ecs_america.alb_dns_name
+    asia    = module.ecs_asia.alb_dns_name
   }
 
-  ingress {
-    external_enabled = true
-    target_port      = 80
-    traffic_weight {
-      latest_revision = true
-      percentage      = 100
-    }
-  }
-
-  template {
-    container {
-      name   = "asia-cdn-container"
-      image  = "nginx:latest"
-      cpu    = var.cpu
-      memory = var.memory
-
-      env {
-        name  = "REGION"
-        value = "Asia"
-      }
-
-      liveness_probe {
-        transport       = "HTTP"
-        port            = 80
-        path            = "/"
-        interval_seconds = 30
-        timeout         = 1
-        failure_count_threshold = 3
-      }
-    }
-
-    min_replicas = var.min_replicas
-    max_replicas = var.max_replicas
-
-    http_scale_rule {
-      name                = "http-scale-rule"
-      concurrent_requests = 10
-      authentication {
-        secret_name       = "dummy-secret"
-        trigger_parameter = "triggerName"
-      }
-    }
-  }
-
-  tags = var.tags
 }
+

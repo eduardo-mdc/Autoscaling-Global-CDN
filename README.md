@@ -41,6 +41,8 @@ Get-Content .env | ForEach-Object {
     }
 }
 ```
+
+
 ## Deployment
 
 1. Initialize Terraform:
