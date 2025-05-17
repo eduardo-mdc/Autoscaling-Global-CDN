@@ -4,6 +4,18 @@ variable "project_name" {
   default     = "global-serverless"
 }
 
+variable "project_id" {
+  description = "Project ID"
+  type        = string
+  default     = "72f7ea26-f247-406b-80fe-833c52c306b0"
+}
+
+variable "k8s_version" {
+  description = "Kubernetes version"
+  type        = string
+  default     = "1.32.0"
+}
+
 variable "scw_access_key" {
   description = "Scaleway Access Key"
   type        = string
@@ -49,6 +61,11 @@ variable "ssh_public_key" {
   type        = string
 }
 
+variable "ssh_private_key_path" {
+  description = "Path to SSH private key for provisioning"
+  type        = string
+}
+
 variable "admin_username" {
   description = "Username to configure on the admin instance"
   type        = string
@@ -83,4 +100,10 @@ variable "memory_limit" {
   description = "Memory limit for each container in MB"
   type        = number
   default     = 512
+}
+
+variable "admin_allowed_ip" {
+  description = "CIDR range allowed to access admin server"
+  type        = string
+  default     = "0.0.0.0/0"  # Better to restrict this in production
 }

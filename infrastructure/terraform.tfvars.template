@@ -1,6 +1,30 @@
-project_name = "global-serverless"
-scw_access_key = "<scw_access_key>"
-scw_secret_key = "scw_secret_key"
-scw_organization_id = "scw_organization_id"
-scw_project_id = "scw_project_id "
-ssh_public_key = "ssh_public_key_content"
+# Scaleway API credentials
+scw_access_key      = "SCW_ACCESS_KEY"
+scw_secret_key      = "SCW_SECRET_KEY"
+scw_organization_id = "SCW_ORGANIZATION_ID"
+scw_project_id      = "SCW_PROJECT_ID"
+
+# Project configuration
+project_name        = "global-serverless"
+project_id          = "72f7ea26-f247-406b-80fe-833c52c306b0"  # Replace with your project ID
+
+# Kubernetes configuration
+k8s_version         = "1.32.0"
+
+# Regions
+main_region         = "fr-par"
+main_zone           = "fr-par-1"
+regions             = ["fr-par", "nl-ams", "pl-waw"]
+
+# Admin server configuration
+admin_username      = "admin"
+ssh_public_key      = "ssh-rsa AAAA..."  # Replace with your SSH public key
+ssh_private_key_path = "~/.ssh/id_rsa"   # Replace with your SSH private key path
+admin_allowed_ip    = "YOUR_IP/32"       # Restrict to your IP for security
+
+# Container configuration
+container_image     = "nginx:latest"
+container_port      = 80
+min_scale           = 1
+max_scale           = 3
+memory_limit        = 512

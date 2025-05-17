@@ -1,4 +1,16 @@
 
+
+terraform {
+  required_providers {
+    scaleway = {
+      source  = "scaleway/scaleway"
+      version = "~> 2.31.0"
+    }
+  }
+  required_version = ">= 1.0.0"
+}
+
+
 # Scaleway provider configuration
 provider "scaleway" {
   access_key      = var.scw_access_key
