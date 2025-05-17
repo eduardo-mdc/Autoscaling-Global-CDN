@@ -1,93 +1,99 @@
-# -------------------------------------------------------------------
-# Create network in each region
-# -------------------------------------------------------------------
-module "network" {
-  for_each = toset(var.regions)
+# ------------------------------------------------------------------------------
+# Root module for multi-region serverless application on Scaleway
+# ------------------------------------------------------------------------------
 
+terraform {
+  required_providers {
+    scaleway = {
+      source  = "scaleway/scaleway"
+      version = "~> 2.31.0"
+    }
+  }
+  required_version = ">= 1.0.0"
+}
+
+# ------------------------------------------------------------------------------
+# Network Module for each region
+# ------------------------------------------------------------------------------
+module "network_par" {
   source       = "./modules/network"
   project_name = var.project_name
-  region       = each.key
+  region       = "fr-par"
 
   providers = {
-    digitalocean = digitalocean
+    scaleway = scaleway.par
   }
 }
 
-# -------------------------------------------------------------------
-# Admin host module (Amsterdam region only, similar to Europe-only in original)
-# -------------------------------------------------------------------
-module "admin" {
-  source              = "./modules/admin"
-  project_name        = var.project_name
-  region              = var.regions[0]  # First region (Amsterdam/Europe)
-  vpc_id              = module.network[var.regions[0]].vpc_id
-  ssh_public_key_path = var.ssh_public_key_path
-  admin_username      = var.admin_username
-  tags                = var.tags
+module "network_ams" {
+  source       = "./modules/network"
+  project_name = var.project_name
+  region       = "nl-ams"
 
   providers = {
-    digitalocean = digitalocean
+    scaleway = scaleway.ams
   }
 }
 
-# -------------------------------------------------------------------
-# Kubernetes clusters in each region
-# -------------------------------------------------------------------
-module "kubernetes" {
-  for_each = toset(var.regions)
-
-  source               = "./modules/kubernetes"
-  project_name         = var.project_name
-  region               = each.key
-  vpc_id               = module.network[each.key].vpc_id
-  min_nodes            = var.min_nodes
-  max_nodes            = var.max_nodes
-  admin_ssh_fingerprint = module.admin.admin_key_fingerprint
+module "network_waw" {
+  source       = "./modules/network"
+  project_name = var.project_name
+  region       = "pl-waw"
 
   providers = {
-    digitalocean = digitalocean
+    scaleway = scaleway.waw
   }
 }
 
-# -------------------------------------------------------------------
-# Traffic management with load balancers
-# -------------------------------------------------------------------
-module "traffic" {
-  source = "./modules/traffic"
 
-  project_name    = var.project_name
-  domain_name     = "" # Set your domain name here if you have one
-  regions         = var.regions
-  loadbalancer_ips = {
-    for region in var.regions :
-    region => module.kubernetes[region].loadbalancer_ip
-  }
+# ------------------------------------------------------------------------------
+# Serverless Deployments for each region
+# ------------------------------------------------------------------------------
+module "serverless_par" {
+  source       = "./modules/serverless"
+  project_name = var.project_name
+  region       = "fr-par"
+  vpc_id       = module.network_par.vpc_id
+  container_image = var.container_image
+  container_port  = var.container_port
+  min_scale       = var.min_scale
+  max_scale       = var.max_scale
+  memory_limit    = var.memory_limit
 
   providers = {
-    digitalocean = digitalocean
+    scaleway = scaleway.par
   }
 }
 
-# -------------------------------------------------------------------
-# Just use the default project for simplicity
-# -------------------------------------------------------------------
-data "digitalocean_project" "default" {
-  name = var.project_name
+module "serverless_ams" {
+  source       = "./modules/serverless"
+  project_name = var.project_name
+  region       = "nl-ams"
+  vpc_id       = module.network_ams.vpc_id
+  container_image = var.container_image
+  container_port  = var.container_port
+  min_scale       = var.min_scale
+  max_scale       = var.max_scale
+  memory_limit    = var.memory_limit
+
+  providers = {
+    scaleway = scaleway.ams
+  }
 }
 
-# Add resources to the project after they've been created
-resource "digitalocean_project_resources" "project_resources" {
-  project = data.digitalocean_project.default.id
+module "serverless_waw" {
+  source       = "./modules/serverless"
+  project_name = var.project_name
+  region       = "pl-waw"
+  vpc_id       = module.network_waw.vpc_id
+  container_image = var.container_image
+  container_port  = var.container_port
+  min_scale       = var.min_scale
+  max_scale       = var.max_scale
+  memory_limit    = var.memory_limit
 
-  # Add resources using proper URN format
-  resources = [
-    "do:droplet:${module.admin.admin_droplet_id}"
-  ]
-
-  # Make sure the resources are created first
-  depends_on = [
-    module.admin,
-    module.kubernetes,
-    module.network
-  ]
+  providers = {
+    scaleway = scaleway.waw
+  }
 }
+

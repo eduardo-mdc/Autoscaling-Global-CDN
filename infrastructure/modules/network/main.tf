@@ -1,44 +1,37 @@
-// Just use the default VPC that already exists
-data "digitalocean_vpc" "default" {
+# Network module for Scaleway
+
+resource "scaleway_vpc" "main" {
   name = "${var.project_name}-vpc-${var.region}"
+  tags = ["terraform", "${var.project_name}"]
 }
 
-// Create a firewall for allowing HTTP traffic
-resource "digitalocean_firewall" "web" {
-  name = "${var.project_name}-web-fw-${var.region}"
+resource "scaleway_vpc_private_network" "main" {
+  name   = "${var.project_name}-private-network-${var.region}"
+  vpc_id = scaleway_vpc.main.id
+  tags   = ["terraform", "${var.project_name}"]
+}
 
-  // Use the default VPC ID
-  droplet_ids = []
+# Security group to allow HTTP/HTTPS traffic
+resource "scaleway_instance_security_group" "web" {
+  name                    = "${var.project_name}-web-sg-${var.region}"
+  inbound_default_policy  = "drop"  # Default deny incoming
+  outbound_default_policy = "accept" # Default allow outgoing
 
-  // Allow HTTP
+  # Allow HTTP traffic
   inbound_rule {
-    protocol         = "tcp"
-    port_range       = "80"
-    source_addresses = ["0.0.0.0/0", "::/0"]
+    action   = "accept"
+    port     = 80
+    ip_range = "0.0.0.0/0"
+    protocol = "TCP"
   }
 
-  // Allow HTTPS
+  # Allow HTTPS traffic
   inbound_rule {
-    protocol         = "tcp"
-    port_range       = "443"
-    source_addresses = ["0.0.0.0/0", "::/0"]
+    action   = "accept"
+    port     = 443
+    ip_range = "0.0.0.0/0"
+    protocol = "TCP"
   }
 
-  // Default outbound rules - allow all traffic
-  outbound_rule {
-    protocol              = "tcp"
-    port_range            = "1-65535"
-    destination_addresses = ["0.0.0.0/0", "::/0"]
-  }
-
-  outbound_rule {
-    protocol              = "udp"
-    port_range            = "1-65535"
-    destination_addresses = ["0.0.0.0/0", "::/0"]
-  }
-
-  outbound_rule {
-    protocol              = "icmp"
-    destination_addresses = ["0.0.0.0/0", "::/0"]
-  }
+  tags = ["terraform", "${var.project_name}", "web"]
 }
