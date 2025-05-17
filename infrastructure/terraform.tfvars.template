@@ -1,0 +1,6 @@
+project_name = "global-serverless"
+scw_access_key = "<scw_access_key>"
+scw_secret_key = "scw_secret_key"
+scw_organization_id = "scw_organization_id"
+scw_project_id = "scw_project_id "
+ssh_public_key = "ssh_public_key_content"

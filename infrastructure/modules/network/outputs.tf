@@ -1,15 +1,14 @@
 output "vpc_id" {
-  value = data.digitalocean_vpc.default.id
+  description = "ID of the created VPC"
+  value       = scaleway_vpc.main.id
 }
 
-output "vpc_name" {
-  value = data.digitalocean_vpc.default.name
+output "private_network_id" {
+  description = "ID of the private network"
+  value       = scaleway_vpc_private_network.main.id
 }
 
-output "region" {
-  value = var.region
-}
-
-output "web_firewall_id" {
-  value = digitalocean_firewall.web.id
+output "security_group_id" {
+  description = "ID of the web security group"
+  value       = scaleway_instance_security_group.web.id
 }
