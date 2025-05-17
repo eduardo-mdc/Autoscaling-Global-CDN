@@ -1,37 +1,58 @@
-# Network module for Scaleway
-
-resource "scaleway_vpc" "main" {
-  name = "${var.project_name}-vpc-${var.region}"
-  tags = ["terraform", "${var.project_name}"]
+# modules/network_with_gateway/main.tf
+resource "random_id" "suffix" {
+  byte_length = 4
 }
 
-resource "scaleway_vpc_private_network" "main" {
-  name   = "${var.project_name}-private-network-${var.region}"
-  vpc_id = scaleway_vpc.main.id
-  tags   = ["terraform", "${var.project_name}"]
+
+resource "scaleway_vpc" "this" {
+  name = format("%s-vpc-%s-%s", var.project_name, var.region, random_id.suffix.hex)
+  project_id     = var.project_id
+  region         = var.region
+  tags           = concat(["terraform", var.project_name, var.region], var.tags)
 }
 
-# Security group to allow HTTP/HTTPS traffic
-resource "scaleway_instance_security_group" "web" {
-  name                    = "${var.project_name}-web-sg-${var.region}"
-  inbound_default_policy  = "drop"  # Default deny incoming
-  outbound_default_policy = "accept" # Default allow outgoing
+resource "scaleway_vpc_private_network" "this" {
+  name       = format("%s-network-%s-%s", var.project_name, var.region, random_id.suffix.hex)
+  project_id = var.project_id
+  region     = var.region
+  vpc_id     = scaleway_vpc.this.id
+  tags       = concat(["terraform", var.project_name, var.region], var.tags)
 
-  # Allow HTTP traffic
-  inbound_rule {
-    action   = "accept"
-    port     = 80
-    ip_range = "0.0.0.0/0"
-    protocol = "TCP"
+  dynamic "ipv4_subnet" {
+    for_each = var.ipv4_subnet != null ? [1] : []
+    content {
+      subnet = var.ipv4_subnet
+    }
   }
+}
 
-  # Allow HTTPS traffic
-  inbound_rule {
-    action   = "accept"
-    port     = 443
-    ip_range = "0.0.0.0/0"
-    protocol = "TCP"
-  }
+resource "scaleway_vpc_public_gateway_ip" "this" {
+  count = var.gw_enabled && var.gw_reserve_ip ? 1 : 0
+  project_id = var.project_id
+  tags       = concat(["terraform", var.project_name, var.region, random_id.suffix.hex], var.tags)
+  zone       = var.zone
+}
 
-  tags = ["terraform", "${var.project_name}", "web"]
+
+
+resource "scaleway_vpc_public_gateway" "this" {
+  count = var.gw_enabled ? 1 : 0
+  bastion_enabled = var.bastion_enabled
+  bastion_port    = var.bastion_port
+  enable_smtp     = var.smtp_enabled
+  ip_id           = var.gw_reserve_ip ? scaleway_vpc_public_gateway_ip.this[count.index].id : null
+  name            = format("%s-gateway-%s", var.project_name, var.region)
+  project_id      = var.project_id
+  tags            = concat(["terraform", var.project_name, var.region], var.tags)
+  type            = var.gw_type
+  zone            = var.zone
+}
+
+resource "scaleway_vpc_gateway_network" "this" {
+  count = var.gw_enabled ? 1 : 0
+  enable_masquerade  = var.masquerade_enabled
+  gateway_id         = scaleway_vpc_public_gateway.this[count.index].id
+  private_network_id = scaleway_vpc_private_network.this.id
+  zone               = var.zone
+  static_address     = var.ipv4_subnet
 }

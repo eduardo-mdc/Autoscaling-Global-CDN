@@ -1,0 +1,68 @@
+#cloud-config
+package_update: true
+package_upgrade: true
+
+packages:
+  - apt-transport-https
+  - ca-certificates
+  - curl
+  - software-properties-common
+  - gnupg
+  - lsb-release
+  - jq
+  - net-tools
+  - vim
+  - git
+  - unzip
+
+users:
+  - name: ${username}
+    groups: sudo
+    shell: /bin/bash
+    sudo: ['ALL=(ALL) NOPASSWD:ALL']
+    ssh_authorized_keys:
+      - ${ssh_public_key}
+
+write_files:
+  - path: /etc/motd
+    content: |
+      Welcome to the ${username} admin server!
+      This server has access to all Kubernetes clusters.
+      Use kubectl to manage your clusters.
+
+runcmd:
+  # Install Docker
+  - curl -fsSL https://download.docker.com/linux/ubuntu/gpg | apt-key add -
+  - add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
+  - apt-get update
+  - apt-get install -y docker-ce docker-ce-cli containerd.io
+  - usermod -aG docker ${username}
+
+  # Install kubectl
+  - curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+  - install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
+
+  # Install Helm
+  - curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
+  - chmod 700 get_helm.sh
+  - ./get_helm.sh
+
+  # Install Terraform
+  - wget -O- https://apt.releases.hashicorp.com/gpg | gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
+  - echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" | tee /etc/apt/sources.list.d/hashicorp.list
+  - apt-get update
+  - apt-get install -y terraform
+
+  # Install Ansible
+  - apt-add-repository -y ppa:ansible/ansible
+  - apt-get update
+  - apt-get install -y ansible
+
+  # Configure kubectl bash completion
+  - kubectl completion bash > /etc/bash_completion.d/kubectl
+  - echo 'alias k=kubectl' >> /home/${username}/.bashrc
+  - echo 'complete -F __start_kubectl k' >> /home/${username}/.bashrc
+
+  # Create .kube directory
+  - mkdir -p /home/${username}/.kube
+  - chown -R ${username}:${username} /home/${username}/.kube
