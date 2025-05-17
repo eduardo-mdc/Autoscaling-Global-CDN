@@ -1,9 +1,20 @@
-variable "resource_group_name" {
-  description = "Prefix for all resources (e.g. myapp)"
+variable "project_name" {
   type        = string
+  description = "Prefix for resource names"
 }
 
-variable "alb_endpoints" {
-  description = "Map of region key to ALB DNS name"
+variable "domain_name" {
+  type        = string
+  description = "Domain name to use for traffic management"
+  default     = ""  # Optional - if not provided, will not create domain records
+}
+
+variable "loadbalancer_ips" {
   type        = map(string)
+  description = "Map of region names to load balancer IPs"
+}
+
+variable "regions" {
+  type        = list(string)
+  description = "List of region names"
 }

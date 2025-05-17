@@ -1,7 +1,9 @@
-variable "resource_group_name" {
-  type = string
-}
-variable "admin_sg_id" {
-  description = "Security Group ID of the bastion/admin host, to allow SSH"
+variable "project_name" {
   type        = string
+  description = "Prefix for resource names"
+}
+
+variable "region" {
+  type        = string
+  description = "Digital Ocean region"
 }

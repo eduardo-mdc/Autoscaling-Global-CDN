@@ -1,14 +1,15 @@
 output "vpc_id" {
-  value = aws_vpc.this.id
+  value = data.digitalocean_vpc.default.id
 }
 
-output "subnet_ids" {
-  value = aws_subnet.public[*].id
+output "vpc_name" {
+  value = data.digitalocean_vpc.default.name
 }
 
-output "alb_sg_id" {
-  value = aws_security_group.alb.id
+output "region" {
+  value = var.region
 }
-output "ecs_instance_sg_id" {
-  value = aws_security_group.ecs_instances.id
+
+output "web_firewall_id" {
+  value = digitalocean_firewall.web.id
 }

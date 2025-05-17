@@ -1,121 +1,93 @@
-locals {
-  regions = {
-    europe  = "eu-west-1"
-    america = "us-east-1"
-    asia    = "ap-southeast-1"
+# -------------------------------------------------------------------
+# Create network in each region
+# -------------------------------------------------------------------
+module "network" {
+  for_each = toset(var.regions)
+
+  source       = "./modules/network"
+  project_name = var.project_name
+  region       = each.key
+
+  providers = {
+    digitalocean = digitalocean
   }
 }
 
-
 # -------------------------------------------------------------------
-# Admin host module (Europe-only)
+# Admin host module (Amsterdam region only, similar to Europe-only in original)
 # -------------------------------------------------------------------
 module "admin" {
   source              = "./modules/admin"
-  providers           = { aws = aws.europe }
-  resource_group_name = var.resource_group_name
+  project_name        = var.project_name
+  region              = var.regions[0]  # First region (Amsterdam/Europe)
+  vpc_id              = module.network[var.regions[0]].vpc_id
   ssh_public_key_path = var.ssh_public_key_path
   admin_username      = var.admin_username
   tags                = var.tags
 
-  vpc_id    = module.network_europe.vpc_id
-  subnet_id = module.network_europe.subnet_ids[0]
-}
-
-
-# -------------------------------------------------------------------
-# STEP 1: network in each region
-# -------------------------------------------------------------------
-module "network_europe" {
-  source              = "./modules/network"
-  providers           = { aws = aws.europe }
-  resource_group_name = var.resource_group_name
-  admin_sg_id         = module.admin.admin_sg_id
-}
-module "network_america" {
-  source              = "./modules/network"
-  providers           = { aws = aws.america }
-  resource_group_name = var.resource_group_name
-  admin_sg_id         = module.admin.admin_sg_id
-}
-
-module "network_asia" {
-  source              = "./modules/network"
-  providers           = { aws = aws.asia }
-  resource_group_name = var.resource_group_name
-  admin_sg_id         = module.admin.admin_sg_id
+  providers = {
+    digitalocean = digitalocean
+  }
 }
 
 # -------------------------------------------------------------------
-# STEP 2: ECS in each region, using network outputs
+# Kubernetes clusters in each region
 # -------------------------------------------------------------------
-module "ecs_europe" {
-  source                  = "./modules/ecs"
-  providers               = { aws = aws.europe }
-  resource_group_name     = var.resource_group_name
-  cpu                     = var.cpu
-  memory                  = var.memory
-  min_replicas            = var.min_replicas
-  max_replicas            = var.max_replicas
-  request_count_threshold = var.request_count_threshold
+module "kubernetes" {
+  for_each = toset(var.regions)
 
-  vpc_id      = module.network_europe.vpc_id
-  subnet_ids  = module.network_europe.subnet_ids
-  alb_sg_id   = module.network_europe.alb_sg_id
-  region_name = "eu-west-1"
-  instance_sg_id       =  module.network_europe.ecs_instance_sg_id
-  admin_key_name       =  module.admin.admin_key_name
+  source               = "./modules/kubernetes"
+  project_name         = var.project_name
+  region               = each.key
+  vpc_id               = module.network[each.key].vpc_id
+  min_nodes            = var.min_nodes
+  max_nodes            = var.max_nodes
+  admin_ssh_fingerprint = module.admin.admin_key_fingerprint
+
+  providers = {
+    digitalocean = digitalocean
+  }
 }
-
-module "ecs_america" {
-  source                  = "./modules/ecs"
-  providers               = { aws = aws.america }
-  resource_group_name     = var.resource_group_name
-  cpu                     = var.cpu
-  memory                  = var.memory
-  min_replicas            = var.min_replicas
-  max_replicas            = var.max_replicas
-  request_count_threshold = var.request_count_threshold
-
-  vpc_id      = module.network_america.vpc_id
-  subnet_ids  = module.network_america.subnet_ids
-  alb_sg_id   = module.network_america.alb_sg_id
-  region_name = "us-east-1"
-  instance_sg_id       =  module.network_america.ecs_instance_sg_id
-  admin_key_name       =  module.admin.admin_key_name
-}
-
-module "ecs_asia" {
-  source                  = "./modules/ecs"
-  providers               = { aws = aws.asia }
-  resource_group_name     = var.resource_group_name
-  cpu                     = var.cpu
-  memory                  = var.memory
-  min_replicas            = var.min_replicas
-  max_replicas            = var.max_replicas
-  request_count_threshold = var.request_count_threshold
-
-  vpc_id      = module.network_asia.vpc_id
-  subnet_ids  = module.network_asia.subnet_ids
-  alb_sg_id   = module.network_asia.alb_sg_id
-  region_name = "ap-southeast-1"
-  instance_sg_id       =  module.network_asia.ecs_instance_sg_id
-  admin_key_name       =  module.admin.admin_key_name
-}
-
 
 # -------------------------------------------------------------------
-# Traffic (Route53) module
+# Traffic management with load balancers
 # -------------------------------------------------------------------
 module "traffic" {
-  source              = "./modules/traffic"
-  resource_group_name = var.resource_group_name
+  source = "./modules/traffic"
 
-  alb_endpoints = {
-    europe  = module.ecs_europe.alb_dns_name
-    america = module.ecs_america.alb_dns_name
-    asia    = module.ecs_asia.alb_dns_name
+  project_name    = var.project_name
+  domain_name     = "" # Set your domain name here if you have one
+  regions         = var.regions
+  loadbalancer_ips = {
+    for region in var.regions :
+    region => module.kubernetes[region].loadbalancer_ip
   }
 
+  providers = {
+    digitalocean = digitalocean
+  }
 }
 
+# -------------------------------------------------------------------
+# Just use the default project for simplicity
+# -------------------------------------------------------------------
+data "digitalocean_project" "default" {
+  name = var.project_name
+}
+
+# Add resources to the project after they've been created
+resource "digitalocean_project_resources" "project_resources" {
+  project = data.digitalocean_project.default.id
+
+  # Add resources using proper URN format
+  resources = [
+    "do:droplet:${module.admin.admin_droplet_id}"
+  ]
+
+  # Make sure the resources are created first
+  depends_on = [
+    module.admin,
+    module.kubernetes,
+    module.network
+  ]
+}

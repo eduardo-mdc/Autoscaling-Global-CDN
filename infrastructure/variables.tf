@@ -1,37 +1,20 @@
-variable "resource_group_name" {
+variable "project_name" {
   description = "Prefix for all resources (e.g. myapp)"
   type        = string
   default     = "global-cdn"
 }
 
-variable "cpu" {
-  description = "vCPU count for the ECS task"
-  type        = number
-  default     = 0.5
-}
 
-variable "memory" {
-  description = "Memory (GB) for the ECS task"
-  type        = number
-  default     = 0.5
-}
-
-variable "min_replicas" {
-  description = "Minimum ECS task count"
+variable "min_nodes" {
+  description = "Minimum node count in Kubernetes cluster"
   type        = number
   default     = 1
 }
 
-variable "max_replicas" {
-  description = "Maximum ECS task count"
+variable "max_nodes" {
+  description = "Maximum node count in Kubernetes cluster"
   type        = number
-  default     = 3
-}
-
-variable "request_count_threshold" {
-  description = "ALBRequestCountPerTarget threshold to scale on"
-  type        = number
-  default     = 100
+  default     = 1  # Reduced from 3 to 1 to stay within account limits
 }
 
 variable "ssh_public_key_path" {
@@ -41,13 +24,19 @@ variable "ssh_public_key_path" {
 }
 
 variable "admin_username" {
-  description = "Username to configure on the admin EC2 host"
+  description = "Username to configure on the admin droplet"
   type        = string
   default     = "admin"
 }
 
 variable "tags" {
-  description = "Additional tags to apply to all admin resources"
+  description = "Additional tags to apply to all resources"
   type        = map(string)
   default     = {}
+}
+
+variable "regions" {
+  description = "Digital Ocean regions to deploy to"
+  type        = list(string)
+  default     = ["ams3", "nyc1", "sgp1"]  # Amsterdam, New York, Singapore
 }

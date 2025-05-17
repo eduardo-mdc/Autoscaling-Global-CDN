@@ -1,6 +1,16 @@
-variable "resource_group_name" {
+variable "project_name" {
   type        = string
   description = "Prefix for resource names"
+}
+
+variable "region" {
+  type        = string
+  description = "Digital Ocean region"
+}
+
+variable "vpc_id" {
+  type        = string
+  description = "VPC ID where admin droplet will be created"
 }
 
 variable "ssh_public_key_path" {
@@ -16,14 +26,11 @@ variable "admin_username" {
 variable "tags" {
   type        = map(string)
   description = "Additional tags to apply to admin resources"
+  default     = {}
 }
 
-variable "vpc_id" {
+variable "droplet_size" {
   type        = string
-  description = "VPC ID where the admin host will reside"
-}
-
-variable "subnet_id" {
-  type        = string
-  description = "Subnet ID for admin host placement"
+  description = "Size of the admin droplet"
+  default     = "s-1vcpu-1gb"  # Smallest size, equivalent to t2.micro
 }

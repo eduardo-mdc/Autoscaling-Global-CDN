@@ -1,29 +1,18 @@
 terraform {
-  required_version = ">= 1.0.0"
   required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = "~> 4.0"
+    digitalocean = {
+      source  = "digitalocean/digitalocean"
+      version = "2.46.0"
     }
   }
 }
 
-# one credentials profile for all regions:
-#   aws configure --profile default
-provider "aws" {
-  alias   = "europe"
-  region  = "eu-west-1"
-  profile = "default"
+variable "do_token" {
+  description = "Digital Ocean API Token"
+  type        = string
+  sensitive   = true
 }
 
-provider "aws" {
-  alias   = "america"
-  region  = "us-east-1"
-  profile = "default"
-}
-
-provider "aws" {
-  alias   = "asia"
-  region  = "ap-southeast-1"
-  profile = "default"
+provider "digitalocean" {
+  token = var.do_token
 }
