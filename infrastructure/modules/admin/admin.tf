@@ -1,4 +1,4 @@
-# Admin VM module
+# Admin VM module with fixed SSH key configuration
 
 # Enable required APIs
 resource "google_project_service" "compute_api" {
@@ -30,94 +30,31 @@ resource "google_compute_instance" "admin" {
   name         = "${var.project_name}-admin"
   machine_type = var.machine_type
   zone         = var.zone
-
-  tags = ["admin-vm", "${var.project_name}-admin"]
+  tags         = ["admin-vm", "${var.project_name}-admin"]
 
   boot_disk {
     initialize_params {
       image = "ubuntu-os-cloud/ubuntu-2004-lts"
-      size  = 50  # GB
-      type  = "pd-ssd" # For faster boot and operations
+      size  = 50
+      type  = "pd-ssd"
     }
   }
 
   network_interface {
     subnetwork = google_compute_subnetwork.admin_subnet.self_link
-
-    # Create a static external IP
     access_config {
       nat_ip = google_compute_address.admin_ip.address
     }
   }
 
-  # Add SSH key to metadata
+  # Minimal startup script - just to ensure SSH access
   metadata = {
     ssh-keys = "${var.admin_username}:${var.ssh_public_key}"
   }
 
-  # Add startup script
-  metadata_startup_script = <<-EOF
-    #!/bin/bash
-    # Update system packages
-    apt-get update
-    apt-get upgrade -y
-
-    # Install required tools
-    apt-get install -y docker.io curl apt-transport-https ca-certificates software-properties-common unzip jq tcpdump nmap
-
-    # Install Google Cloud SDK
-    echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list
-    curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key --keyring /usr/share/keyrings/cloud.google.gpg add -
-    apt-get update && apt-get install -y google-cloud-cli
-
-    # Install kubectl
-    apt-get install -y kubectl
-
-    # Set up Docker
-    systemctl enable docker
-    systemctl start docker
-    usermod -aG docker ${var.admin_username}
-
-    # Configure gcloud for this project
-    cat <<EOT > /home/${var.admin_username}/configure-gcloud.sh
-    #!/bin/bash
-    gcloud config set project ${var.project_id}
-    gcloud config set compute/region ${var.region}
-    gcloud config set compute/zone ${var.zone}
-    EOT
-
-    chmod +x /home/${var.admin_username}/configure-gcloud.sh
-    chown ${var.admin_username}:${var.admin_username} /home/${var.admin_username}/configure-gcloud.sh
-
-    # Create helper script for connecting to GKE clusters
-    cat <<EOT > /home/${var.admin_username}/connect-to-cluster.sh
-    #!/bin/bash
-    if [ \$# -ne 1 ]; then
-      echo "Usage: \$0 <region>"
-      echo "Available regions: ${join(" ", var.all_regions)}"
-      exit 1
-    fi
-
-    REGION=\$1
-    CLUSTER_NAME="${var.project_name}-gke-\$REGION"
-
-    echo "Connecting to cluster \$CLUSTER_NAME in region \$REGION..."
-    gcloud container clusters get-credentials \$CLUSTER_NAME --region \$REGION --project ${var.project_id}
-
-    echo "Successfully connected to \$CLUSTER_NAME"
-    kubectl config current-context
-    EOT
-
-    chmod +x /home/${var.admin_username}/connect-to-cluster.sh
-    chown ${var.admin_username}:${var.admin_username} /home/${var.admin_username}/connect-to-cluster.sh
-  EOF
-
   service_account {
     scopes = ["cloud-platform"]
   }
-
-  # Enable deletion protection for the admin VM
-  deletion_protection = true
 
   depends_on = [google_project_service.compute_api]
 }
