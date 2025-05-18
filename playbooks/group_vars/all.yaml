@@ -1,0 +1,25 @@
+# Global configuration for all servers
+---
+# Project information
+project_id: "{{ lookup('env', 'TF_VAR_project_id') | default('') }}"
+project_name: "{{ lookup('env', 'TF_VAR_project_name') | default('') }}"
+regions: "{{ lookup('env', 'TF_VAR_regions') | default('') | split(',') }}"
+admin_username: "{{ lookup('env', 'TF_VAR_admin_username') | default('admin') }}"
+
+# Application settings
+docker_hub_image: "{{ docker_image | default('') }}"
+docker_hub_tag: "{{ docker_tag | default('latest') }}"
+
+# K8s application settings
+app_replicas: 3
+app_namespace: "{{ project_name }}-streaming"
+app_name: "streaming-server"
+app_container_port: 80
+app_rtmp_port: 1935
+app_resource_memory_request: "256Mi"
+app_resource_cpu_request: "100m"
+app_resource_memory_limit: "512Mi"
+app_resource_cpu_limit: "500m"
+app_health_path: "/healthz"
+app_health_init_delay: 10
+app_health_period: 5
