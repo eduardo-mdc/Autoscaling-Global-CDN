@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ app_name }}
+  namespace: {{ app_namespace }}
+spec:
+  replicas: {{ app_replicas }}
+  selector:
+    matchLabels:
+      app: {{ app_name }}
+  template:
+    metadata:
+      labels:
+        app: {{ app_name }}
+    spec:
+      containers:
+        - name: {{ app_name }}
+          image: {{ docker_hub_image }}:{{ docker_hub_tag }}
+          ports:
+            - containerPort: {{ app_container_port }}
+              name: http
+            - containerPort: {{ app_rtmp_port }}
+              name: rtmp
+          resources:
+            requests:
+              memory: "{{ app_resource_memory_request }}"
+              cpu: "{{ app_resource_cpu_request }}"
+            limits:
+              memory: "{{ app_resource_memory_limit }}"
+              cpu: "{{ app_resource_cpu_limit }}"
+          readinessProbe:
+            httpGet:
+              path: {{ app_health_path }}
+              port: {{ app_container_port }}
+            initialDelaySeconds: {{ app_health_init_delay }}
+            periodSeconds: {{ app_health_period }}
+          livenessProbe:
+            httpGet:
+              path: {{ app_health_path }}
+              port: {{ app_container_port }}
+            initialDelaySeconds: {{ app_health_init_delay | int * 1.5 | int }}
+            periodSeconds: {{ app_health_period | int * 3 }}

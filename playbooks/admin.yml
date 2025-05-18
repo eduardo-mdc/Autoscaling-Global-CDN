@@ -1,0 +1,8 @@
+---
+# Admin VM configuration playbook
+- name: Configure Admin VM
+  hosts: admin
+  roles:
+    - common
+    - docker
+    - gcloud

@@ -1,0 +1,7 @@
+---
+# Kubernetes deployment playbook
+- name: Deploy Kubernetes Applications
+  hosts: admin
+  become: no
+  roles:
+    - k8s-app

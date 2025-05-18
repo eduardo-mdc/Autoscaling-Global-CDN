@@ -1,0 +1,59 @@
+---
+# Kubernetes application deployment tasks
+
+- name: Create Kubernetes manifest directory
+  file:
+    path: "/home/{{ ansible_user }}/k8s-manifests"
+    state: directory
+    mode: '0755'
+
+- name: Create namespace manifest
+  template:
+    src: namespace.yaml.j2
+    dest: "/home/{{ ansible_user }}/k8s-manifests/namespace.yaml"
+
+- name: Create deployment manifest
+  template:
+    src: deployment.yaml.j2
+    dest: "/home/{{ ansible_user }}/k8s-manifests/deployment.yaml"
+
+- name: Create service manifest
+  template:
+    src: service.yaml.j2
+    dest: "/home/{{ ansible_user }}/k8s-manifests/service.yaml"
+
+- name: Create ingress manifest
+  template:
+    src: ingress.yaml.j2
+    dest: "/home/{{ ansible_user }}/k8s-manifests/ingress.yaml"
+
+- name: Deploy to all regions
+  block:
+    - name: Connect to each GKE cluster
+      shell: "~/scripts/connect-to-cluster.sh {{ item }}"
+      loop: "{{ regions }}"
+      register: connect_result
+
+    - name: Create namespace
+      k8s:
+        state: present
+        src: "/home/{{ ansible_user }}/k8s-manifests/namespace.yaml"
+        kubeconfig: "/home/{{ ansible_user }}/.kube/config"
+
+    - name: Deploy application
+      k8s:
+        state: present
+        src: "/home/{{ ansible_user }}/k8s-manifests/deployment.yaml"
+        kubeconfig: "/home/{{ ansible_user }}/.kube/config"
+
+    - name: Create service
+      k8s:
+        state: present
+        src: "/home/{{ ansible_user }}/k8s-manifests/service.yaml"
+        kubeconfig: "/home/{{ ansible_user }}/.kube/config"
+
+    - name: Create ingress
+      k8s:
+        state: present
+        src: "/home/{{ ansible_user }}/k8s-manifests/ingress.yaml"
+        kubeconfig: "/home/{{ ansible_user }}/.kube/config"

@@ -1,0 +1,4 @@
+#!/bin/bash
+gcloud config set project {{ project_id }}
+gcloud config set compute/region {{ ansible_env.REGION | default(regions[0]) }}
+gcloud config set compute/zone {{ ansible_env.ZONE | default(regions[0] + '-a') }}
