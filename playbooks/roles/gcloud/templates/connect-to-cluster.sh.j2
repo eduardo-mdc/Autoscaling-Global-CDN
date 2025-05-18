@@ -1,0 +1,15 @@
+#!/bin/bash
+if [ $# -ne 1 ]; then
+echo "Usage: $0 <region>"
+    echo "Available regions: {{ regions | join(' ') }}"
+    exit 1
+    fi
+
+    REGION=$1
+    CLUSTER_NAME="{{ project_name }}-gke-$REGION"
+
+    echo "Connecting to cluster $CLUSTER_NAME in region $REGION..."
+    gcloud container clusters get-credentials $CLUSTER_NAME --region $REGION --project {{ project_id }}
+
+    echo "Successfully connected to $CLUSTER_NAME"
+    kubectl config current-context

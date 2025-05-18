@@ -1,136 +1,128 @@
-# Multi-Region Kubernetes Infrastructure on Scaleway
+# Multi-Region GKE Streaming Server Infrastructure
 
-This Terraform configuration sets up a multi-region Kubernetes infrastructure on Scaleway with an admin server that has access to all VPCs.
+## Overview
 
-## Architecture
+This project provides a modular infrastructure for deploying a streaming server across multiple GKE clusters with global load balancing. It uses Terraform for infrastructure provisioning and Ansible for configuration management, following a phased deployment approach.
 
-The infrastructure consists of:
+## Key Components
 
-1. **Network Resources in Three Regions**:
-    - VPCs in Paris (fr-par), Amsterdam (nl-ams), and Warsaw (pl-waw)
-    - Private networks in each region
-    - Security groups for web traffic and Kubernetes clusters
+1. **Terraform Infrastructure Modules:**
+   - `admin`: Admin VM for secure cluster management
+   - `network`: Regional VPC networks and isolation
+   - `gke`: Regional Kubernetes clusters
+   - `loadbalancer`: Global HTTP load balancer
 
-2. **Kubernetes Clusters in Each Region**:
-    - Kapsule Kubernetes clusters with Cilium CNI
-    - Autoscaling node pools
-    - Security groups for controlled access
+2. **Ansible Roles:**
+   - `common`: Basic server configuration
+   - `docker`: Docker installation and configuration
+   - `gcloud`: Google Cloud SDK and kubectl setup
+   - `k8s-app`: Kubernetes application deployment
 
-3. **Admin Server**:
-    - Centralized management server in Paris region
-    - Access to all private networks via VPC gateways
-    - Pre-installed tools for Kubernetes and infrastructure management
-    - Kubeconfigs for all clusters
+3. **Deployment Phases:**
+   - Phase 1: Infrastructure provisioning with Terraform
+   - Phase 2: Admin VM configuration with Ansible
+   - Phase 3: Kubernetes application deployment
 
-## Isolation Requirements
-
-- VMs/containers in different zones do not communicate with each other
-- Only the admin server can reach all nodes in the network
-- Nodes cannot access the admin server (one-way access)
-
-## Module Structure
+## Project Structure
 
 ```
-.
-├── main.tf                # Root module configuration
-├── variables.tf           # Root variables
-├── outputs.tf             # Root outputs
-├── providers.tf           # Provider configuration for all regions
-└── modules/
-    ├── network/           # Network module for VPC and security groups
-    │   ├── main.tf
-    │   ├── variables.tf
-    │   └── outputs.tf
-    ├── k8s_cluster/       # Kubernetes cluster module
-    │   ├── main.tf
-    │   ├── variables.tf
-    │   └── outputs.tf
-    └── admin/             # Admin server module
-        ├── main.tf
-        ├── variables.tf
-        ├── outputs.tf
-        └── cloud-init.yml # Cloud-init configuration for admin server
+/
+├── terraform/                # Infrastructure as Code
+│   ├── main.tf, variables.tf, etc.
+│   └── modules/
+│       ├── admin/
+│       ├── network/
+│       ├── gke/
+│       └── loadbalancer/
+│
+├── playbooks/                # Ansible configuration
+│   ├── ansible.cfg
+│   ├── inventory/
+│   ├── group_vars/
+│   ├── site.yml, admin.yml, k8s.yml
+│   └── roles/
+│       ├── common/
+│       ├── docker/
+│       ├── gcloud/
+│       └── k8s-app/
+│
+└── deploy.sh                 # Deployment orchestration script
 ```
 
-## Prerequisites
+## Key Changes from Original
 
-To deploy this infrastructure, you need:
+1. **Admin VM Simplification:**
+   - Removed complex startup script
+   - Using metadata for SSH keys
+   - Minimal startup requirements for Ansible integration
 
-1. Scaleway account with API credentials
-2. Terraform installed locally (version >= 1.0.0)
-3. SSH key pair for admin server access
+2. **Ansible Integration:**
+   - Standard role-based Ansible structure
+   - Clear separation of responsibilities
+   - Modular configuration approach
 
-## Deployment
+3. **Deployment Process:**
+   - Automated phased deployment
+   - Clear dependency management
+   - Streamlined configuration
 
-1. Clone this repository
-2. Create a `terraform.tfvars` file with your configuration:
-
-```hcl
-scw_access_key      = "your-scaleway-access-key"
-scw_secret_key      = "your-scaleway-secret-key"
-scw_organization_id = "your-organization-id"
-scw_project_id      = "your-project-id"
-ssh_public_key      = "ssh-rsa AAA..."
-ssh_private_key_path = "/path/to/your/private/key"
-admin_allowed_ip    = "your-ip-address/32"  # Restrict to your IP
-```
-
-3. Initialize Terraform:
+## Usage
 
 ```bash
-terraform init
+./deploy.sh
 ```
 
-4. Apply the configuration:
+The deployment script will:
+1. Validate prerequisites
+2. Prompt for configuration values
+3. Deploy infrastructure with Terraform
+4. Configure the admin VM with Ansible
+5. Deploy the streaming server application to all GKE clusters
 
-```bash
-terraform apply
-```
+## Troubleshooting
 
-## Post-Deployment
+**Terraform Deployment Issues:**
+If Terraform deployment fails, check:
+- GCP credentials
+- Project permissions
+- API enablement
 
-After deployment:
+**SSH Connection Issues:**
+If SSH connection fails, check:
+- Firewall rules
+- SSH key configuration
+- Network connectivity
 
-1. SSH to the admin server using the public IP displayed in the outputs:
+**Ansible Configuration Issues:**
+If Ansible configuration fails, check:
+- Python installation on target
+- Ansible inventory configuration
+- Role dependencies
 
-```bash
-ssh admin@$(terraform output -raw admin_server_public_ip)
-```
+**Kubernetes Deployment Issues:**
+If Kubernetes deployment fails, check:
+- GKE cluster status
+- kubectl configuration
+- Docker image accessibility
 
-2. Use kubectl to interact with all clusters:
+## Maintenance
 
-```bash
-# List all contexts
-kubectl config get-contexts
+For ongoing maintenance:
 
-# Switch to Paris cluster
-kubectl config use-context paris
+1. **Infrastructure Updates:**
+   ```bash
+   cd terraform
+   terraform apply
+   ```
 
-# Switch to Amsterdam cluster
-kubectl config use-context amsterdam
+2. **Configuration Updates:**
+   ```bash
+   cd playbooks
+   ansible-playbook admin.yml
+   ```
 
-# Switch to Warsaw cluster
-kubectl config use-context warsaw
-```
-
-## Ansible Configuration
-
-For additional server configuration, use Ansible with the admin server as the control node:
-
-1. Create an inventory file on the admin server
-2. Create playbooks for specific configurations
-3. Use the pre-installed Ansible to apply configurations
-
-## Security Notes
-
-- Update `admin_allowed_ip` to restrict admin server access to your IP address
-- Consider using a bastion host pattern for additional security
-- Implement additional security groups as needed
-- Set up proper Kubernetes RBAC for cluster access
-
-## Future Improvements
-
-- Add monitoring and logging infrastructure
-- Implement CI/CD pipelines for application deployment
-- Configure cluster federation or multi-cluster management tools
-- Set up backup and recovery procedures
+3. **Application Updates:**
+   ```bash
+   cd playbooks
+   ansible-playbook k8s.yml -e "docker_hub_image=new_image" -e "docker_hub_tag=new_tag"
+   ```

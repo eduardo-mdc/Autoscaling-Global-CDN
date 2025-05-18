@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ app_name }}
+  namespace: {{ app_namespace }}
+  annotations:
+    cloud.google.com/backend-config: '{"default": "{{ project_name }}-backend-config"}'
+spec:
+  type: NodePort
+  selector:
+    app: {{ app_name }}
+  ports:
+    - port: {{ app_container_port }}
+      targetPort: {{ app_container_port }}
+      protocol: TCP
+      name: http
+    - port: {{ app_rtmp_port }}
+      targetPort: {{ app_rtmp_port }}
+      protocol: TCP
+      name: rtmp

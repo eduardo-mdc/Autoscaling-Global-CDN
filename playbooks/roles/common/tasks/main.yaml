@@ -1,0 +1,29 @@
+---
+# Common tasks for all servers
+- name: Update apt cache
+  apt:
+    update_cache: yes
+    cache_valid_time: 3600
+
+- name: Install common packages
+  apt:
+    name: "{{ packages }}"
+    state: present
+
+- name: Set up timezone
+  timezone:
+    name: UTC
+
+- name: Configure swappiness
+  sysctl:
+    name: vm.swappiness
+    value: '10'
+    state: present
+
+- name: Create script directory
+  file:
+    path: "/home/{{ admin_username }}/scripts"
+    state: directory
+    mode: '0755'
+    owner: "{{ admin_username }}"
+    group: "{{ admin_username }}"
