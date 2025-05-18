@@ -5,13 +5,13 @@
 provider "google" {
   project     = var.project_id
   credentials = file(var.credentials_file)
-  region      = var.regions[0]  # Default to first region
+  region      = var.regions[0] # Default to first region
 }
 
 provider "google-beta" {
   project     = var.project_id
   credentials = file(var.credentials_file)
-  region      = var.regions[0]  # Default to first region
+  region      = var.regions[0] # Default to first region
 }
 
 # Fetch region information for mapping
@@ -42,11 +42,11 @@ module "network" {
   source   = "./modules/network"
   for_each = local.region_numbers
 
-  project_id       = var.project_id
-  project_name     = var.project_name
-  region           = each.key
-  region_number    = each.value
-  admin_cidr       = module.admin.admin_subnet_cidr
+  project_id         = var.project_id
+  project_name       = var.project_name
+  region             = each.key
+  region_number      = each.value
+  admin_cidr         = module.admin.admin_subnet_cidr
   other_region_cidrs = local.other_region_cidrs[each.key]
 }
 
@@ -89,17 +89,18 @@ module "gke" {
   max_nodes         = var.max_nodes
   node_machine_type = var.node_machine_type
   node_disk_size_gb = var.node_disk_size_gb
+  node_disk_type    = var.node_disk_type
 }
 
 # Create global HTTP(S) load balancer
 module "loadbalancer" {
   source = "./modules/loadbalancer"
 
-  project_id    = var.project_id
-  project_name  = var.project_name
-  regions       = var.regions
-  domain_name   = var.domain_name
-  enable_cdn    = var.enable_cdn
+  project_id   = var.project_id
+  project_name = var.project_name
+  regions      = var.regions
+  domain_name  = var.domain_name
+  enable_cdn   = var.enable_cdn
 
   # These would typically be the GKE Ingress NEGs
   # In a real implementation, you'd extract these from GKE

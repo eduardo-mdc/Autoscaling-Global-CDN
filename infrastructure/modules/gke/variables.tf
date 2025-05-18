@@ -56,3 +56,9 @@ variable "node_disk_size_gb" {
   type        = number
   default     = 100
 }
+
+variable "node_disk_type" {
+  description = "Disk type for GKE nodes"
+  type        = string
+  default     = "pd-standard"  # Standard persistent disk
+}

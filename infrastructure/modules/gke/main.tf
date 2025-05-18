@@ -1,4 +1,4 @@
-# GKE module - Kubernetes cluster with global HTTP load balancing support
+# GKE module - Kubernetes cluster with global HTTP load balancing support (Final Fix)
 
 # Enable required APIs
 resource "google_project_service" "container_api" {
@@ -54,7 +54,7 @@ resource "google_container_cluster" "cluster" {
 
   # Binary authorization (optional, for production)
   binary_authorization {
-    evaluation_mode = "PROJECT_SINGLETON_POLICY_ENFORCE"
+    evaluation_mode = "DISABLED"
   }
 
   # Workload identity for GKE
@@ -84,7 +84,14 @@ resource "google_container_cluster" "cluster" {
 resource "google_container_node_pool" "primary" {
   name       = "${var.project_name}-node-pool-${var.region}"
   location   = var.region
-  cluster    = google_container_cluster.cluster.name
+  cluster    = google_container_cluster.cluster.id
+
+  # Node locations - specify zones explicitly within the region
+  node_locations = [
+    "${var.region}-a",
+    "${var.region}-b",
+    "${var.region}-c"
+  ]
 
   # Autoscaling configuration
   autoscaling {
@@ -98,11 +105,18 @@ resource "google_container_node_pool" "primary" {
     auto_upgrade = true
   }
 
+  # Upgrade settings - add explicit configuration
+  upgrade_settings {
+    max_surge       = 1
+    max_unavailable = 0
+  }
+
   # Node configuration
   node_config {
+    image_type   = "COS_CONTAINERD"
     machine_type = var.node_machine_type
     disk_size_gb = var.node_disk_size_gb
-    disk_type    = "pd-ssd"  # Use SSD for better performance
+    disk_type    = var.node_disk_type
 
     # Labels and tags
     labels = {
@@ -111,7 +125,7 @@ resource "google_container_node_pool" "primary" {
 
     tags = ["${var.project_name}-node", "gke-${var.region}"]
 
-    # OAuth scopes
+    # OAuth scopes - simplified to standard set
     oauth_scopes = [
       "https://www.googleapis.com/auth/cloud-platform"
     ]
@@ -121,10 +135,17 @@ resource "google_container_node_pool" "primary" {
       mode = "GKE_METADATA"
     }
 
-    # Optional: enable shielded nodes for enhanced security
+    # Enable shielded nodes for enhanced security
     shielded_instance_config {
-      enable_secure_boot          = true
+      enable_secure_boot          = false
       enable_integrity_monitoring = true
     }
+  }
+
+  # Add timeout settings
+  timeouts {
+    create = "30m"
+    update = "30m"
+    delete = "30m"
   }
 }

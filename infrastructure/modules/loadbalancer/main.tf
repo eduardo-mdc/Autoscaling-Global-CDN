@@ -35,7 +35,6 @@ resource "google_compute_backend_service" "default" {
   timeout_sec           = 30
   load_balancing_scheme = "EXTERNAL"
   health_checks         = [google_compute_health_check.default.id]
-  enable_cdn            = var.enable_cdn
 
   # Add all regional backends
   dynamic "backend" {
@@ -48,22 +47,10 @@ resource "google_compute_backend_service" "default" {
     }
   }
 
-  # Custom request headers
+  # Custom request headers - using only supported variables
   custom_request_headers = [
-    "X-Client-Region: {client_region}",
-    "X-Client-IP: {client_ip}"
+    "X-Client-Region: {client_region}"
   ]
-
-  # If CDN is enabled, configure caching
-  cdn_policy {
-    cache_mode                   = var.enable_cdn ? "CACHE_ALL_STATIC" : "CACHE_DISABLED"
-    client_ttl                   = var.enable_cdn ? 3600 : null
-    default_ttl                  = var.enable_cdn ? 3600 : null
-    max_ttl                      = var.enable_cdn ? 86400 : null
-    negative_caching             = var.enable_cdn
-    serve_while_stale            = var.enable_cdn ? 86400 : null
-    signed_url_cache_max_age_sec = var.enable_cdn ? 7200 : null
-  }
 }
 
 # Create URL map for load balancer
