@@ -62,3 +62,9 @@ variable "node_disk_type" {
   type        = string
   default     = "pd-standard"  # Standard persistent disk
 }
+
+variable "node_locations" {
+  description = "List of zones for node deployment within the region (leave empty for automatic zone selection)"
+  type        = list(string)
+  default     = []
+}

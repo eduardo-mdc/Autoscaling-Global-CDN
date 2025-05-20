@@ -1,0 +1,8 @@
+---
+# Deploy autoscaler components
+
+- name: Deploy node pool autoscaler
+  k8s:
+    state: present
+    src: "{{ manifests_dir }}/autoscaler.yaml"
+    kubeconfig: "{{ kubeconfig_path }}"

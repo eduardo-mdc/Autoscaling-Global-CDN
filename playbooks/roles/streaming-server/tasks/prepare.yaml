@@ -1,0 +1,8 @@
+---
+# Preparation tasks for streaming server deployment
+
+- name: Create Kubernetes manifest directory
+  file:
+    path: "{{ manifests_dir }}"
+    state: directory
+    mode: '0755'

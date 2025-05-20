@@ -86,13 +86,6 @@ resource "google_container_node_pool" "primary" {
   location   = var.region
   cluster    = google_container_cluster.cluster.id
 
-  # Node locations - specify zones explicitly within the region
-  node_locations = [
-    "${var.region}-a",
-    "${var.region}-b",
-    "${var.region}-c"
-  ]
-
   # Autoscaling configuration
   autoscaling {
     min_node_count = var.min_nodes

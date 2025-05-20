@@ -1,0 +1,14 @@
+---
+# Connect to GKE clusters
+
+- name: Connect to each GKE cluster
+  shell: "~/scripts/connect-to-cluster.sh {{ item }}"
+  loop: "{{ regions }}"
+  register: connect_result
+  when: connect_to_clusters | default(true) | bool
+
+- name: Create namespace
+  k8s:
+    state: present
+    src: "{{ manifests_dir }}/namespace.yaml"
+    kubeconfig: "{{ kubeconfig_path }}"

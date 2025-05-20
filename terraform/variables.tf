@@ -18,7 +18,7 @@ variable "project_name" {
 variable "regions" {
   description = "GCP regions to deploy to"
   type        = list(string)
-  default     = ["europe-west4", "us-east1", "asia-southeast1"] # Netherlands, Virginia, Singapore
+  default     = ["europe-west4", "us-east4", "asia-southeast1"] # Netherlands, Virginia, Singapore
 }
 
 variable "zones" {
@@ -26,7 +26,7 @@ variable "zones" {
   type        = map(string)
   default = {
     "europe-west4"    = "europe-west4-a",
-    "us-east1"        = "us-east1-b",
+    "us-east4"        = "us-east4-a",
     "asia-southeast1" = "asia-southeast1-a"
   }
 }

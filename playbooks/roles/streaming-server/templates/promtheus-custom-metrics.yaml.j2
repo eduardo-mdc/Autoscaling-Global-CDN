@@ -1,0 +1,53 @@
+# Create a ServiceMonitor for the streaming server
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ app_name }}
+  namespace: {{ monitoring_namespace | default('monitoring') }}
+  labels:
+    app: {{ app_name }}
+{% if extra_monitor_labels is defined %}
+{% for key, value in extra_monitor_labels.items() %}
+    {{ key }}: "{{ value }}"
+{% endfor %}
+{% endif %}
+spec:
+  selector:
+    matchLabels:
+      app: {{ app_name }}
+  endpoints:
+    - port: metrics
+      interval: {{ metrics_scrape_interval | default('10s') }}
+{% if metrics_path is defined %}
+      path: {{ metrics_path }}
+{% endif %}
+  namespaceSelector:
+    matchNames:
+      - {{ app_namespace }}
+---
+# PrometheusRule to calculate latency metrics
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ app_name }}-latency-rules
+  namespace: {{ monitoring_namespace | default('monitoring') }}
+spec:
+  groups:
+    - name: {{ app_name }}.rules
+      rules:
+        - record: {{ metric_prefix | default('streaming') }}_client_latency_seconds
+          expr: sum(rate({{ metric_prefix | default('streaming') }}_connection_latency_seconds_sum[{{ metrics_window | default('5m') }}])) by (node) / sum(rate({{ metric_prefix | default('streaming') }}_connection_latency_seconds_count[{{ metrics_window | default('5m') }}])) by (node)
+        - record: {{ metric_prefix | default('streaming') }}_client_latency_threshold
+          expr: sum({{ metric_prefix | default('streaming') }}_client_latency_seconds) / count({{ metric_prefix | default('streaming') }}_client_latency_seconds) > {{ latency_threshold | default('0.1') }}
+{% if extra_rules is defined %}
+{% for rule in extra_rules %}
+        - record: {{ rule.name }}
+          expr: {{ rule.expr }}
+{% if rule.labels is defined %}
+          labels:
+{% for key, value in rule.labels.items() %}
+        {{ key }}: "{{ value }}"
+{% endfor %}
+{% endif %}
+{% endfor %}
+{% endif %}

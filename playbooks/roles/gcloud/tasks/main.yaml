@@ -24,18 +24,18 @@
 - name: Create GCP configuration script
   template:
     src: configure-gcloud.sh.j2
-    dest: "/home/{{ admin_username }}/scripts/configure-gcloud.sh"
+    dest: "/opt/scripts/configure-gcloud.sh"
     mode: '0755'
-    owner: "{{ admin_username }}"
-    group: "{{ admin_username }}"
+    owner: root
+    group: root
 
 - name: Create GKE connection script
   template:
     src: connect-to-cluster.sh.j2
-    dest: "/home/{{ admin_username }}/scripts/connect-to-cluster.sh"
+    dest: "/opt/scripts/connect-to-cluster.sh"
     mode: '0755'
-    owner: "{{ admin_username }}"
-    group: "{{ admin_username }}"
+    owner: root
+    group: root
 
 - name: Install Python packages for K8s
   pip:

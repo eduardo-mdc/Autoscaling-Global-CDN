@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ app_namespace }}
+  labels:
+    app: {{ app_name }}
+    environment: {{ environment | default('production') }}
+{% if namespace_labels is defined %}
+{% for key, value in namespace_labels.items() %}
+    {{ key }}: "{{ value }}"
+{% endfor %}
+{% endif %}
+{% if namespace_annotations is defined %}
+  annotations:
+{% for key, value in namespace_annotations.items() %}
+    {{ key }}: "{{ value }}"
+{% endfor %}
+{% endif %}

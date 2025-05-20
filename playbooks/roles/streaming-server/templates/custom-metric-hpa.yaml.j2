@@ -1,0 +1,134 @@
+# Node pool autoscaler deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ autoscaler_name | default('node-autoscaler') }}
+  namespace: {{ autoscaler_namespace | default('kube-system') }}
+  labels:
+    app: {{ autoscaler_name | default('node-autoscaler') }}
+spec:
+  replicas: {{ autoscaler_replicas | default('1') }}
+  selector:
+    matchLabels:
+      app: {{ autoscaler_name | default('node-autoscaler') }}
+  template:
+    metadata:
+      labels:
+        app: {{ autoscaler_name | default('node-autoscaler') }}
+    spec:
+      serviceAccountName: {{ autoscaler_sa_name | default('node-autoscaler') }}
+      containers:
+        - name: {{ autoscaler_name | default('node-autoscaler') }}
+          image: {{ autoscaler_image | default('k8s.gcr.io/autoscaling/cluster-autoscaler:v1.23.0') }}
+          command:
+            - ./cluster-autoscaler
+            - --cloud-provider={{ cloud_provider | default('gce') }}
+            - --node-group-auto-discovery=label:gke-cluster-name={{ cluster_name }}
+            - --scan-interval={{ scan_interval | default('10s') }}
+            - --scale-down-delay-after-add={{ scale_down_delay | default('2m') }}
+            - --scale-down-unneeded-time={{ scale_down_unneeded | default('2m') }}
+            - --expendable-pods-priority-cutoff={{ pods_priority_cutoff | default('-10') }}
+            - --v={{ verbosity_level | default('4') }}
+{% if extra_autoscaler_args is defined %}
+{% for arg in extra_autoscaler_args %}
+            - {{ arg }}
+{% endfor %}
+{% endif %}
+          resources:
+            limits:
+              cpu: {{ autoscaler_cpu_limit | default('100m') }}
+              memory: {{ autoscaler_memory_limit | default('300Mi') }}
+            requests:
+              cpu: {{ autoscaler_cpu_request | default('100m') }}
+              memory: {{ autoscaler_memory_request | default('300Mi') }}
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+{% if extra_autoscaler_env is defined %}
+{% for env in extra_autoscaler_env %}
+            - name: {{ env.name }}
+              value: "{{ env.value }}"
+{% endfor %}
+{% endif %}
+          volumeMounts:
+            - name: ssl-certs
+              mountPath: /etc/ssl/certs/ca-certificates.crt
+              readOnly: true
+{% if extra_autoscaler_mounts is defined %}
+{% for mount in extra_autoscaler_mounts %}
+            - name: {{ mount.name }}
+              mountPath: {{ mount.path }}
+{% if mount.readonly is defined %}
+              readOnly: {{ mount.readonly }}
+{% endif %}
+{% endfor %}
+{% endif %}
+      volumes:
+        - name: ssl-certs
+          hostPath:
+            path: "/etc/ssl/certs/ca-certificates.crt"
+{% if extra_autoscaler_volumes is defined %}
+{% for volume in extra_autoscaler_volumes %}
+        - name: {{ volume.name }}
+{% if volume.type == 'configMap' %}
+          configMap:
+            name: {{ volume.configMapName }}
+{% elif volume.type == 'secret' %}
+          secret:
+            secretName: {{ volume.secretName }}
+{% elif volume.type == 'hostPath' %}
+          hostPath:
+            path: {{ volume.path }}
+{% endif %}
+{% endfor %}
+{% endif %}
+---
+# Service account for node autoscaler
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ autoscaler_sa_name | default('node-autoscaler') }}
+  namespace: {{ autoscaler_namespace | default('kube-system') }}
+---
+# Custom metric adapter for latency
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ autoscaler_name | default('node-autoscaler') }}-hpa
+  namespace: {{ autoscaler_namespace | default('kube-system') }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ autoscaler_name | default('node-autoscaler') }}
+  minReplicas: {{ hpa_min_replicas | default('1') }}
+  maxReplicas: {{ hpa_max_replicas | default('3') }}
+  metrics:
+    - type: External
+      external:
+        metric:
+          name: {{ metric_name | default('custom.googleapis.com|streaming_client_latency_seconds') }}
+        target:
+          type: {{ metric_target_type | default('AverageValue') }}
+          averageValue: {{ latency_target | default('100m') }}
+{% if enable_behavior | default(false) %}
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: {{ scale_up_window | default('60') }}
+      policies:
+        - type: Percent
+          value: {{ scale_up_percent | default('100') }}
+          periodSeconds: {{ scale_up_period | default('60') }}
+    scaleDown:
+      stabilizationWindowSeconds: {{ scale_down_window | default('300') }}
+      policies:
+        - type: Percent
+          value: {{ scale_down_percent | default('10') }}
+          periodSeconds: {{ scale_down_period | default('60') }}
+{% endif %}

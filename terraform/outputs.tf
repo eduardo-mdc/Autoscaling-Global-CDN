@@ -1,3 +1,9 @@
+output "ssh_key_debug" {
+  description = "Debug output to verify SSH key content"
+  value       = "${substr(file(var.ssh_public_key_path), 0, 50)}..."
+  sensitive   = true
+}
+
 output "admin_public_ip" {
   description = "Public IP of the admin VM"
   value       = module.admin.admin_public_ip
@@ -42,3 +48,4 @@ output "network_details" {
     }
   }
 }
+

@@ -1,0 +1,31 @@
+---
+# Deploy monitoring components
+
+- name: Install Prometheus Operator if needed
+  block:
+    - name: Check if Prometheus CRDs exist
+      shell: kubectl get crd prometheuses.monitoring.coreos.com 2>/dev/null || echo "not-found"
+      register: prometheus_crd_check
+      changed_when: false
+
+    - name: Install Prometheus Operator
+      shell: |
+        kubectl apply -f {{ prometheus_operator_url | default('https://github.com/prometheus-operator/prometheus-operator/releases/download/v0.59.1/bundle.yaml') }}
+        sleep {{ prometheus_wait_seconds | default(30) }}
+      args:
+        executable: /bin/bash
+      when: prometheus_crd_check.stdout == "not-found" or force_prometheus_install | default(false) | bool
+  when: install_prometheus | default(true) | bool
+  ignore_errors: "{{ ignore_prometheus_errors | default(false) }}"
+
+- name: Deploy monitoring resources
+  k8s:
+    state: present
+    src: "{{ manifests_dir }}/monitoring.yaml"
+    kubeconfig: "{{ kubeconfig_path }}"
+
+- name: Deploy custom metrics adapter
+  k8s:
+    state: present
+    src: "{{ manifests_dir }}/custom-metrics.yaml"
+    kubeconfig: "{{ kubeconfig_path }}"

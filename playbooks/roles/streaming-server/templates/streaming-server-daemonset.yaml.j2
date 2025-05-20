@@ -1,0 +1,110 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ app_name }}
+  namespace: {{ app_namespace }}
+  labels:
+    app: {{ app_name }}
+    environment: {{ environment | default('production') }}
+spec:
+  selector:
+    matchLabels:
+      app: {{ app_name }}
+  template:
+    metadata:
+      labels:
+        app: {{ app_name }}
+        environment: {{ environment | default('production') }}
+      annotations:
+        prometheus.io/scrape: "{{ prometheus_scrape | default('true') }}"
+        prometheus.io/port: "{{ metrics_port | default('9090') }}"
+    spec:
+      affinity:
+        # This ensures pods prefer to be distributed across nodes
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: {{ pod_anti_affinity_weight | default('100') }}
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app
+                      operator: In
+                      values:
+                        - {{ app_name }}
+                topologyKey: "kubernetes.io/hostname"
+      containers:
+        - name: {{ app_name }}
+          image: {{ docker_hub_image }}:{{ docker_hub_tag }}
+          ports:
+            - containerPort: {{ app_http_port | default('80') }}
+              name: http
+            - containerPort: {{ app_rtmp_port | default('1935') }}
+              name: rtmp
+            - containerPort: {{ metrics_port | default('9090') }}
+              name: metrics
+          resources:
+            requests:
+              memory: "{{ app_memory_request | default('512Mi') }}"
+              cpu: "{{ app_cpu_request | default('250m') }}"
+            limits:
+              memory: "{{ app_memory_limit | default('1Gi') }}"
+              cpu: "{{ app_cpu_limit | default('500m') }}"
+          readinessProbe:
+            httpGet:
+              path: {{ app_health_path | default('/healthz') }}
+              port: {{ app_health_port | default(app_http_port | default('80')) }}
+            initialDelaySeconds: {{ app_readiness_delay | default('10') }}
+            periodSeconds: {{ app_health_period | default('5') }}
+          livenessProbe:
+            httpGet:
+              path: {{ app_health_path | default('/healthz') }}
+              port: {{ app_health_port | default(app_http_port | default('80')) }}
+            initialDelaySeconds: {{ app_liveness_delay | default('15') }}
+            periodSeconds: {{ app_liveness_period | default('15') }}
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+{% if custom_env_vars is defined %}
+{% for env_var in custom_env_vars %}
+            - name: {{ env_var.name }}
+              value: "{{ env_var.value }}"
+{% endfor %}
+{% endif %}
+          volumeMounts:
+            - name: streaming-cache
+              mountPath: {{ cache_mount_path | default('/var/cache/streaming') }}
+{% if extra_volume_mounts is defined %}
+{% for mount in extra_volume_mounts %}
+            - name: {{ mount.name }}
+              mountPath: {{ mount.path }}
+{% if mount.subPath is defined %}
+              subPath: {{ mount.subPath }}
+{% endif %}
+{% endfor %}
+{% endif %}
+      volumes:
+        - name: streaming-cache
+          hostPath:
+            path: {{ cache_host_path | default('/var/cache/streaming') }}
+            type: DirectoryOrCreate
+{% if extra_volumes is defined %}
+{% for volume in extra_volumes %}
+        - name: {{ volume.name }}
+{% if volume.type == 'configMap' %}
+          configMap:
+            name: {{ volume.configMapName }}
+{% elif volume.type == 'secret' %}
+          secret:
+            secretName: {{ volume.secretName }}
+{% elif volume.type == 'persistentVolumeClaim' %}
+          persistentVolumeClaim:
+            claimName: {{ volume.claimName }}
+{% endif %}
+{% endfor %}
+{% endif %}

@@ -22,8 +22,8 @@
 
 - name: Create script directory
   file:
-    path: "/home/{{ admin_username }}/scripts"
+    path: "/opt/scripts"
     state: directory
     mode: '0755'
-    owner: "{{ admin_username }}"
-    group: "{{ admin_username }}"
+    owner: root
+    group: root

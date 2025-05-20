@@ -1,0 +1,40 @@
+---
+# Create Kubernetes manifest files from templates
+
+- name: Create namespace manifest
+  template:
+    src: namespace.yaml.j2
+    dest: "{{ manifests_dir }}/namespace.yaml"
+
+- name: Create DaemonSet manifest
+  template:
+    src: daemonset.yaml.j2
+    dest: "{{ manifests_dir }}/daemonset.yaml"
+
+- name: Create service manifest
+  template:
+    src: service.yaml.j2
+    dest: "{{ manifests_dir }}/service.yaml"
+
+- name: Create ConfigMap for latency exporter
+  template:
+    src: latency-exporter-config.yaml.j2
+    dest: "{{ manifests_dir }}/latency-exporter-config.yaml"
+
+- name: Create monitoring resources
+  template:
+    src: monitoring.yaml.j2
+    dest: "{{ manifests_dir }}/monitoring.yaml"
+  when: deploy_monitoring | bool
+
+- name: Create autoscaler manifest
+  template:
+    src: autoscaler.yaml.j2
+    dest: "{{ manifests_dir }}/autoscaler.yaml"
+  when: deploy_autoscaler | bool
+
+- name: Create custom metrics config
+  template:
+    src: custom-metrics.yaml.j2
+    dest: "{{ manifests_dir }}/custom-metrics.yaml"
+  when: deploy_monitoring | bool

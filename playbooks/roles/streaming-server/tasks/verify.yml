@@ -1,0 +1,39 @@
+---
+# Verify deployment
+
+- name: Check DaemonSet status
+  shell: kubectl -n {{ app_namespace }} get daemonset {{ app_name }} -o wide
+  register: daemonset_status
+  changed_when: false
+
+- name: Display DaemonSet status
+  debug:
+    var: daemonset_status.stdout_lines
+
+- name: Check metrics endpoint
+  shell: |
+    POD_NAME=$(kubectl -n {{ app_namespace }} get pods -l app={{ app_name }} -o jsonpath='{.items[0].metadata.name}')
+    kubectl -n {{ app_namespace }} exec -it $POD_NAME -- curl -s localhost:{{ metrics_port }}/metrics | head -n 20
+  register: metrics_output
+  ignore_errors: yes
+  changed_when: false
+
+- name: Check custom metrics availability
+  shell: "kubectl get --raw '/apis/custom.metrics.k8s.io/v1beta1/' | grep {{ metric_prefix }}"
+  register: custom_metrics
+  ignore_errors: yes
+  changed_when: false
+  when: deploy_monitoring | bool
+
+- name: Display verification results
+  debug:
+    msg: |
+      Deployment Verification Summary:
+      
+      DaemonSet Status:
+      {{ daemonset_status.stdout_lines }}
+      
+      Custom Metrics Available:
+      {{ custom_metrics.stdout_lines | default(['No custom metrics found yet']) }}
+      
+      Metrics Endpoint Accessible: {{ metrics_output.rc == 0 }}

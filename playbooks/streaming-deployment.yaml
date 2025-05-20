@@ -1,0 +1,17 @@
+---
+# Streaming server deployment playbook using the streaming-server role
+- name: Deploy Streaming Server to Kubernetes
+  hosts: admin # Admin VM runs kubectl commands
+  become: yes
+
+  roles:
+    - role: streaming-server
+      tags:
+        - streaming
+        - prepare
+        - manifests
+        - connect
+        - deploy
+        - monitoring
+        - autoscaler
+        - verify
