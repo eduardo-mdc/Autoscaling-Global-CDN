@@ -1,6 +1,16 @@
 # 📡 NGINX Streaming Server with HLS, RTMP, and HTTPS
 
 Este projeto faz parte da fase de desenvolvimento de uma **CDN virtual descentralizada** com **offloading oportunista**. Ele disponibiliza uma infraestrutura de transmissão de vídeo contínua via **NGINX + RTMP + HLS + HTTPS (autoassinado)**, pronta para ser implementada em ambientes como Azure Container Instances ou localmente com Docker.
+## 📦 Arquivos de mídia grandes
+
+O vídeo `BigBuckBunny.mp4` não está incluído no repositório devido ao limite de 100MB do GitHub.
+
+Você pode baixá-lo manualmente:
+
+- [Download direto (150MB)](https://download.blender.org/peach/bigbuckbunny_movies/BigBuckBunny_640x360.m4v)
+
+Após o download, coloque o arquivo em:
+server/nginx/html/files/BigBuckBunny.mp4
 
 ## 🚀 Imagem Docker
 A imagem deste projeto está disponível em:
