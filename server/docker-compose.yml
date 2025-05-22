@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  nginx:
+    image: nginx-rtmp-ffmpeg  # imagem com suporte RTMP e HLS
+    ports:
+      - "8181:8181"   # HTTPS ou HTTP do NGINX para arquivos estáticos e player
+      - "1935:1935"   # RTMP para ingestão do streaming
+    volumes:
+      - ./nginx/html:/usr/share/nginx/html      # arquivos estáticos (player, videos estáticos)
+      - ./data/hls:/tmp/hls                         # pasta onde o nginx grava arquivos HLS
+      - ./nginx/conf/nginx.conf:/etc/nginx/nginx.conf  # sua configuração personalizada
+      - ./nginx/ssl:/etc/nginx/ssl              # certificados SSL
+
+    restart: unless-stopped
