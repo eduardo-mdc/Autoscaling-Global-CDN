@@ -49,3 +49,28 @@ output "network_details" {
   }
 }
 
+# Add these outputs to your main outputs.tf
+
+output "bastion_internal_ips" {
+  description = "Internal IP addresses of bastion hosts"
+  value = {
+    for region in var.regions :
+    region => module.bastion[region].bastion_internal_ip
+  }
+}
+
+output "bastion_ssh_via_admin" {
+  description = "SSH commands to connect to bastion hosts via admin VM"
+  value = {
+    for region in var.regions :
+    region => "ssh -J ${var.admin_username}@${module.admin.admin_public_ip} ${var.admin_username}@${module.bastion[region].bastion_internal_ip}"
+  }
+}
+
+output "kubectl_access_via_bastions" {
+  description = "Instructions for accessing GKE clusters via bastion hosts"
+  value = {
+    for region in var.regions :
+    region => "Connect via: ssh -J ${var.admin_username}@${module.admin.admin_public_ip} ${var.admin_username}@${module.bastion[region].bastion_internal_ip}"
+  }
+}

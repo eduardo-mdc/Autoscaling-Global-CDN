@@ -1,17 +1,16 @@
 # Main Terraform configuration for global multi-region infrastructure
-# Focus on infrastructure only - no Kubernetes resource application
 
 # Configure Google provider
 provider "google" {
   project     = var.project_id
   credentials = file(var.credentials_file)
-  region      = var.regions[0] # Default to first region
+  region      = var.regions[0]
 }
 
 provider "google-beta" {
   project     = var.project_id
   credentials = file(var.credentials_file)
-  region      = var.regions[0] # Default to first region
+  region      = var.regions[0]
 }
 
 # Fetch region information for mapping
@@ -37,20 +36,7 @@ locals {
   }
 }
 
-# Create VPC networks in each region
-module "network" {
-  source   = "./modules/network"
-  for_each = local.region_numbers
-
-  project_id         = var.project_id
-  project_name       = var.project_name
-  region             = each.key
-  region_number      = each.value
-  admin_cidr         = module.admin.admin_subnet_cidr
-  other_region_cidrs = local.other_region_cidrs[each.key]
-}
-
-# Create admin VM in the first region
+# Create admin VM FIRST (no dependencies)
 module "admin" {
   source = "./modules/admin"
 
@@ -62,17 +48,58 @@ module "admin" {
   admin_username = var.admin_username
   ssh_public_key = file(var.ssh_public_key_path)
 
-  # Pass all VPC network links for peering
-  vpc_network_links = [
-    for region in var.regions :
-    module.network[region].network_self_link
-  ]
+  # Pass region numbers for dynamic master CIDR calculation
+  region_numbers = local.region_numbers
 
-  # All regions for admin scripts
+  # All regions for admin scripts (no module dependencies)
   all_regions = var.regions
 }
 
-# Create GKE clusters in each region
+# Create VPC networks in each region (depends on admin)
+module "network" {
+  source   = "./modules/network"
+  for_each = local.region_numbers
+
+  project_id            = var.project_id
+  project_name          = var.project_name
+  region                = each.key
+  region_number         = each.value
+  admin_cidr            = module.admin.admin_subnet_cidr
+  other_region_cidrs    = local.other_region_cidrs[each.key]
+}
+
+# Update admin module with network links (after networks are created)
+# This creates the VPC peering connections FROM admin TO regional networks
+resource "google_compute_network_peering" "admin_to_region" {
+  for_each = local.region_numbers
+
+  name         = "${var.project_name}-admin-to-region-${each.value}"
+  network      = module.admin.admin_vpc_self_link
+  peer_network = module.network[each.key].network_self_link
+
+  # Enable route sharing
+  export_custom_routes = true
+  import_custom_routes = true
+
+  # Enable subnet route sharing
+  export_subnet_routes_with_public_ip = true
+  import_subnet_routes_with_public_ip = true
+}
+
+resource "google_compute_network_peering" "region_to_admin" {
+  for_each = local.region_numbers
+
+  name         = "${var.project_name}-region-${each.value}-to-admin"
+  network      = module.network[each.key].network_self_link
+  peer_network = module.admin.admin_vpc_self_link
+
+  export_custom_routes = true
+  import_custom_routes = true
+  export_subnet_routes_with_public_ip = true
+  import_subnet_routes_with_public_ip = true
+}
+
+# Create GKE clusters in each region (depends on networks)
 module "gke" {
   source   = "./modules/gke"
   for_each = local.region_numbers
@@ -92,6 +119,23 @@ module "gke" {
   node_disk_type    = var.node_disk_type
 }
 
+module "bastion" {
+  source   = "./modules/bastion"
+  for_each = local.region_numbers
+
+  project_id     = var.project_id
+  project_name   = var.project_name
+  region         = each.key
+  machine_type   = "e2-medium"  # Small instance for bastion
+  admin_username = var.admin_username
+  ssh_public_key = file(var.ssh_public_key_path)
+
+  # Network configuration
+  network_name      = module.network[each.key].network_name
+  subnet_self_link  = module.network[each.key].subnet_self_link
+  admin_cidr        = module.admin.admin_subnet_cidr
+}
+
 # Create global HTTP(S) load balancer
 module "loadbalancer" {
   source = "./modules/loadbalancer"
@@ -102,9 +146,6 @@ module "loadbalancer" {
   domain_name  = var.domain_name
   enable_cdn   = var.enable_cdn
 
-  # These would typically be the GKE Ingress NEGs
-  # In a real implementation, you'd extract these from GKE
   backend_services = []
-
   regional_backend_services = {}
 }

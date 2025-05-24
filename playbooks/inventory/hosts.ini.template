@@ -1,3 +1,0 @@
-[admin]
-# This will be dynamically replaced with the actual IP from Terraform
-admin ansible_host={{ admin_ip }} ansible_user={{ admin_username }} ansible_ssh_private_key_file={{ ssh_private_key_path }}

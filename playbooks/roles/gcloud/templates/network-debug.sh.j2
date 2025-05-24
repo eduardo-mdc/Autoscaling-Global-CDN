@@ -1,0 +1,54 @@
+#!/bin/bash
+
+echo "=== Network Debug Information ==="
+export USE_GKE_GCLOUD_AUTH_PLUGIN=True
+
+echo "--- Admin VM Network Info ---"
+echo "Internal IP: $(curl -s -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/network-interfaces/0/ip)"
+echo "External IP: $(curl -s -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/network-interfaces/0/access-configs/0/external-ip)"
+echo "Network: $(curl -s -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/network-interfaces/0/network | cut -d'/' -f5)"
+echo "Subnetwork: $(curl -s -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/network-interfaces/0/subnetwork | cut -d'/' -f5)"
+echo ""
+
+echo "--- VPC Peering Status ---"
+echo "Checking VPC peering connections..."
+gcloud compute networks peerings list --network="{{ project_name }}-admin-vpc" --format="table(name,network,peerNetwork,state)" 2>/dev/null || echo "No peering found"
+echo ""
+
+echo "--- Master Authorized Networks ---"
+{% for region in regions %}
+echo "{{ region }} cluster authorized networks:"
+gcloud container clusters describe "{{ project_name }}-gke-{{ region }}" --region {{ region }} --project {{ project_id }} --format="value(masterAuthorizedNetworksConfig.cidrBlocks[].cidrBlock)" 2>/dev/null || echo "No authorized networks configured"
+echo ""
+{% endfor %}
+
+echo "--- Firewall Rules ---"
+echo "Admin VPC firewall rules:"
+gcloud compute firewall-rules list --filter="network:{{ project_name }}-admin-vpc" --format="table(name,direction,priority,sourceRanges.list():label=SRC_RANGES,allowed[].map().firewall_rule().list():label=ALLOW,targetTags.list():label=TARGET_TAGS)" 2>/dev/null
+echo ""
+
+{% for region in regions %}
+echo "{{ region }} VPC firewall rules (admin-related):"
+gcloud compute firewall-rules list --filter="network:{{ project_name }}-vpc-{{ region }} AND name~admin" --format="table(name,direction,priority,sourceRanges.list():label=SRC_RANGES,allowed[].map().firewall_rule().list():label=ALLOW)" 2>/dev/null
+echo ""
+{% endfor %}
+
+echo "--- Route Testing ---"
+echo "Testing connectivity to Google APIs..."
+if timeout 5 bash -c "</dev/tcp/googleapis.com/443" 2>/dev/null; then
+    echo "✓ Can reach Google APIs (googleapis.com:443)"
+else
+    echo "✗ Cannot reach Google APIs"
+fi
+
+echo ""
+echo "Testing DNS resolution..."
+nslookup container.googleapis.com 2>/dev/null | grep -A 2 "Name:" || echo "DNS resolution failed"
+
+echo ""
+echo "--- gcloud Configuration ---"
+echo "Current gcloud config:"
+gcloud config list 2>/dev/null
+echo ""
+echo "Active account:"
+gcloud auth list --filter=status:ACTIVE --format="value(account)" 2>/dev/null

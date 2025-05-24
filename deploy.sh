@@ -7,7 +7,6 @@ GREEN='\033[0;32m'
 YELLOW='\033[0;33m'
 NC='\033[0m' # No Color
 
-
 # Default operation mode
 OPERATION="apply"
 
@@ -37,13 +36,13 @@ if [[ $# -gt 0 ]]; then
   esac
 fi
 
-
 # Configuration
 PROJECT_DIR=$(pwd)
 PLAYBOOKS_DIR="${PROJECT_DIR}/playbooks"
 TERRAFORM_DIR="${PROJECT_DIR}/terraform"
 SSH_PRIVATE_KEY="$HOME/.ssh/id_rsa"
 SSH_PUBLIC_KEY="$HOME/.ssh/id_rsa.pub"
+ANSIBLE_VARS_SCRIPT="${PROJECT_DIR}/generate-ansible-vars.sh"
 
 # Ensure the script is run from the project root
 if [ ! -d "${TERRAFORM_DIR}" ] || [ ! -d "${PLAYBOOKS_DIR}" ]; then
@@ -84,38 +83,17 @@ if [ ! -f "$SSH_PRIVATE_KEY" ] || [ ! -f "$SSH_PUBLIC_KEY" ]; then
   exit 1
 fi
 
-echo -e "${GREEN}All prerequisites are met.${NC}"
-echo
-
-# Check if .env file exists
-if [ -f ".env" ]; then
-  echo -e "${GREEN}Loading configuration from .env file...${NC}"
-  # Source the .env file
-  source .env
-else
-  echo -e "${RED}Error: .env file not found${NC}"
-  echo -e "${YELLOW}Please create a .env file with the following variables:${NC}"
-  echo "PROJECT_ID=your-gcp-project-id"
-  echo "PROJECT_NAME=your-project-name"
-  echo "DOCKER_HUB_IMAGE=username/image"
-  echo "DOCKER_HUB_TAG=latest"
-  echo "ADMIN_USERNAME=admin"
+# Check if generate-ansible-vars.sh script exists
+if [ ! -f "$ANSIBLE_VARS_SCRIPT" ]; then
+  echo -e "${RED}Error: generate-ansible-vars.sh script not found${NC}"
   exit 1
 fi
 
+echo -e "${GREEN}All prerequisites are met.${NC}"
+echo
+
 # Set default value for ADMIN_USERNAME if not set in .env
-ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
-
-# Display loaded configuration
-echo -e "${GREEN}Loaded configuration:${NC}"
-echo -e "GCP Project ID: ${YELLOW}${PROJECT_ID}${NC}"
-echo -e "Project Name: ${YELLOW}${PROJECT_NAME}${NC}"
-echo -e "Docker Hub Image: ${YELLOW}${DOCKER_HUB_IMAGE}${NC}"
-echo -e "Docker Hub Tag: ${YELLOW}${DOCKER_HUB_TAG}${NC}"
-echo -e "Admin Username: ${YELLOW}${ADMIN_USERNAME}${NC}"
-
-# Export variables for Ansible
-export ANSIBLE_REGIONS="${TF_VAR_regions:-europe-west4,us-east1,asia-southeast1}"
+ADMIN_USERNAME=${ADMIN_USERNAME:-ubuntu}
 
 echo
 echo -e "${YELLOW}PHASE 1: INFRASTRUCTURE ${OPERATION^^}${NC}"
@@ -144,25 +122,61 @@ if [ "$OPERATION" == "apply" ]; then
   echo -e "${GREEN}Applying Terraform configuration...${NC}"
   terraform apply tfplan
 
-  # Get the admin VM IP
+  # Get the admin VM IP and bastion IPs
+  echo -e "${GREEN}Extracting Terraform outputs...${NC}"
   ADMIN_IP=$(terraform output -raw admin_public_ip)
   echo -e "${GREEN}Admin VM IP: ${ADMIN_IP}${NC}"
 
-  # Create Ansible inventory
-  echo -e "${GREEN}Creating Ansible inventory...${NC}"
-  cd "${PROJECT_DIR}"
-  cat "${PLAYBOOKS_DIR}/inventory/hosts.ini.template" | \
-    sed "s/{{ admin_ip }}/${ADMIN_IP}/g" | \
-    sed "s/{{ admin_username }}/${ADMIN_USERNAME}/g" | \
-    sed "s|{{ ssh_private_key_path }}|${SSH_PRIVATE_KEY}|g" \
-    > "${PLAYBOOKS_DIR}/inventory/hosts.ini"
+  # Get bastion internal IPs
+  BASTION_IPS=$(terraform output -json bastion_internal_ips)
+  echo -e "${GREEN}Bastion IPs extracted${NC}"
 
-  # Wait for SSH to be available
-  echo -e "${GREEN}Waiting for SSH to be available on admin VM...${NC}"
-  while ! ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 -i "$SSH_PRIVATE_KEY" "${ADMIN_USERNAME}@${ADMIN_IP}" echo "SSH is up"; do
-    echo "Waiting for SSH connection..."
-    sleep 10
+  # Return to project directory
+  cd "${PROJECT_DIR}"
+
+  # Generate Ansible variables from Terraform outputs
+  echo -e "${GREEN}Generating Ansible variables from Terraform outputs...${NC}"
+  chmod +x "$ANSIBLE_VARS_SCRIPT"
+  "$ANSIBLE_VARS_SCRIPT" --force
+
+  # Create Ansible inventory with admin and bastions
+  echo -e "${GREEN}Creating Ansible inventory with jump host configuration...${NC}"
+
+  INVENTORY_FILE="${PLAYBOOKS_DIR}/inventory/hosts.ini"
+  mkdir -p "${PLAYBOOKS_DIR}/inventory"
+
+  # Create inventory with admin and bastions (via jump host)
+  cat > "$INVENTORY_FILE" << EOF
+[admin]
+admin-vm ansible_host=${ADMIN_IP} ansible_user=${ADMIN_USERNAME} ansible_ssh_private_key_file=${SSH_PRIVATE_KEY}
+
+[bastions]
+EOF
+
+  # Add bastion hosts using jump host configuration
+  echo "$BASTION_IPS" | jq -r 'to_entries[] | "\(.key) \(.value)"' | while read region ip; do
+    echo "bastion-${region} ansible_host=${ip} ansible_user=${ADMIN_USERNAME} ansible_ssh_private_key_file=${SSH_PRIVATE_KEY} bastion_region=${region}" >> "$INVENTORY_FILE"
   done
+
+  # Add group variables
+  cat >> "$INVENTORY_FILE" << EOF
+
+[admin:vars]
+ansible_ssh_common_args='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'
+ansible_python_interpreter=/usr/bin/python3
+
+[bastions:vars]
+ansible_ssh_common_args='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ProxyJump=${ADMIN_USERNAME}@${ADMIN_IP}'
+ansible_python_interpreter=/usr/bin/python3
+
+[all:vars]
+ansible_ssh_common_args='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'
+EOF
+
+  echo -e "${GREEN}Inventory file created: ${INVENTORY_FILE}${NC}"
+  echo -e "${YELLOW}Bastion hosts will be accessed via admin VM as jump host${NC}"
+
+
 else
   # Destroy confirmation
   echo -e "${RED}WARNING: This will destroy all infrastructure resources!${NC}"
@@ -178,4 +192,16 @@ else
   terraform destroy -auto-approve
 
   echo -e "${GREEN}Infrastructure successfully destroyed.${NC}"
+
+  # Clean up generated files
+  cd "${PROJECT_DIR}"
+  if [ -f "${PLAYBOOKS_DIR}/inventory/hosts.ini" ]; then
+    rm "${PLAYBOOKS_DIR}/inventory/hosts.ini"
+    echo -e "${GREEN}Cleaned up inventory file${NC}"
+  fi
+
+  if [ -f "${PLAYBOOKS_DIR}/group_vars/all.yaml" ]; then
+    rm "${PLAYBOOKS_DIR}/group_vars/all.yaml"
+    echo -e "${GREEN}Cleaned up Ansible variables file${NC}"
+  fi
 fi

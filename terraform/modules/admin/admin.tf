@@ -1,4 +1,4 @@
-# Admin VM module with simplified configuration - for Ansible integration
+# Admin VM module - Remove the VPC peering (move to main.tf)
 
 # Enable required APIs
 resource "google_project_service" "compute_api" {
@@ -25,7 +25,7 @@ resource "google_compute_subnetwork" "admin_subnet" {
   private_ip_google_access = true
 }
 
-# Create admin VM instance - Simplified for Ansible management
+# Create admin VM instance
 resource "google_compute_instance" "admin" {
   name         = "${var.project_name}-admin"
   machine_type = var.machine_type
@@ -36,47 +36,36 @@ resource "google_compute_instance" "admin" {
   boot_disk {
     initialize_params {
       image = "ubuntu-os-cloud/ubuntu-2004-lts"
-      size  = 50  # GB
-      type  = "pd-ssd" # For faster boot and operations
+      size  = 50
+      type  = "pd-ssd"
     }
   }
 
   network_interface {
     subnetwork = google_compute_subnetwork.admin_subnet.self_link
 
-    # Create a static external IP
     access_config {
       nat_ip = google_compute_address.admin_ip.address
     }
   }
 
-  # Use metadata for SSH keys instead of startup script
   metadata = {
     ssh-keys = "${var.admin_username}:${var.ssh_public_key}"
   }
 
-  # Minimal startup script - only install essentials and prepare for Ansible
   metadata_startup_script = <<-EOF
     #!/bin/bash
     set -e
-
-    # Update system packages
     apt-get update && apt-get upgrade -y
-
-    # Install Python for Ansible
     apt-get install -y python3 python3-pip
-
-    # Log startup completion
-    echo "Minimal startup script completed at $(date)" > /var/log/startup-script-completed.log
+    echo "Startup script completed at $(date)" > /var/log/startup-script-completed.log
   EOF
 
   service_account {
     scopes = ["cloud-platform"]
   }
 
-  # Enable deletion protection for the admin VM
   deletion_protection = false
-
   depends_on = [google_project_service.compute_api]
 }
 
@@ -97,20 +86,31 @@ resource "google_compute_firewall" "admin_ssh" {
     ports    = ["22"]
   }
 
-  # Restrict to specific IP ranges if needed in production
   source_ranges = var.allowed_ssh_ranges
   target_tags   = ["admin-vm"]
 }
 
-# Create VPC peering connections from admin VPC to all other VPCs
-resource "google_compute_network_peering" "admin_to_region" {
-  for_each = { for idx, link in var.vpc_network_links : idx => link }
+# Calculate master CIDRs based on region numbers
+locals {
+  master_cidrs = [
+    for region_num in values(var.region_numbers) :
+    "172.16.${region_num}.0/28"
+  ]
+}
 
-  name         = "${var.project_name}-admin-to-region-${each.key}"
-  network      = google_compute_network.admin_vpc.self_link
-  peer_network = each.value
+# Allow ingress from GKE master subnets to admin VM (dynamic)
+resource "google_compute_firewall" "admin_allow_from_gke_masters" {
+  name    = "${var.project_name}-admin-allow-from-gke-masters"
+  network = google_compute_network.admin_vpc.name
 
-  # Share custom routes
-  export_custom_routes = true
-  import_custom_routes = true
+  allow {
+    protocol = "tcp"
+    ports    = ["443", "10250"]
+  }
+
+  # Use calculated master CIDRs
+  source_ranges = local.master_cidrs
+
+  target_tags = ["admin-vm"]
+  priority = 1000
 }

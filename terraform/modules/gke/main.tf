@@ -28,7 +28,7 @@ resource "google_container_cluster" "cluster" {
   # Private cluster configuration - control plane has private IP
   private_cluster_config {
     enable_private_nodes    = true
-    enable_private_endpoint = false  # Public endpoint for admin access
+    enable_private_endpoint = true
     master_ipv4_cidr_block  = "172.16.${var.region_number}.0/28"
   }
 
@@ -85,6 +85,9 @@ resource "google_container_node_pool" "primary" {
   name       = "${var.project_name}-node-pool-${var.region}"
   location   = var.region
   cluster    = google_container_cluster.cluster.id
+
+  node_locations = null # Can use any zone in the region
+  node_count = 1  # Initial node count, will be managed by autoscaling
 
   # Autoscaling configuration
   autoscaling {
