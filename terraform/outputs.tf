@@ -49,3 +49,40 @@ output "network_details" {
   }
 }
 
+output "waf_security_policy_id" {
+  description = "ID of the created Cloud Armor security policy"
+  value       = module.waf.security_policy_id
+}
+
+output "waf_security_policy_name" {
+  description = "Name of the created Cloud Armor security policy"
+  value       = module.waf.security_policy_name
+}
+
+output "ids_endpoints" {
+  description = "Map of region to Cloud IDS endpoint details"
+  value       = module.ids.ids_endpoints
+}
+
+# output "monitoring_dashboard_url" {
+#   description = "URL to access the created monitoring dashboard"
+#   value       = module.monitoring.dashboard_url
+# }
+
+output "dns_name_servers" {
+  description = "The list of nameservers that should be configured with the domain registrar"
+  value       = var.domain_name != "" ? module.dns[0].name_servers : []
+}
+
+output "admin_vm_ip" {
+  description = "IP address of the admin VM"
+  value       = module.admin.admin_public_ip
+}
+
+output "gke_cluster_endpoints" {
+  description = "Map of region to GKE cluster endpoint"
+  value = {
+    for region, gke in module.gke : region => gke.cluster_endpoint
+  }
+}
+
