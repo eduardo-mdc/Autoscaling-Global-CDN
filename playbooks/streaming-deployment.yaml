@@ -10,6 +10,7 @@
   roles:
     - common
     - gcloud
+    - content-manager
 
 - name: Phase 1b - Prepare Bastion VM for K8s Management
   hosts: bastion-asia-southeast1

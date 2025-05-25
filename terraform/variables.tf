@@ -110,3 +110,73 @@ variable "additional_domains" {
   type        = list(string)
   default     = []
 }
+
+
+variable "master_bucket_location" {
+  description = "Location for the master content bucket (multi-regional: US, EU, or ASIA)"
+  type        = string
+  default     = "US"
+
+  validation {
+    condition = contains([
+      "US", "EU", "ASIA"
+    ], upper(var.master_bucket_location))
+    error_message = "Master bucket location must be a multi-regional location: US, EU, or ASIA."
+  }
+}
+# Storage Configuration Variables
+variable "environment" {
+  description = "Environment label for resources"
+  type        = string
+  default     = "production"
+}
+
+variable "enable_storage_versioning" {
+  description = "Enable versioning on master content bucket"
+  type        = bool
+  default     = true
+}
+
+variable "enable_regional_storage_versioning" {
+  description = "Enable versioning on regional cache buckets"
+  type        = bool
+  default     = false
+}
+
+variable "enable_storage_lifecycle" {
+  description = "Enable lifecycle management on master bucket"
+  type        = bool
+  default     = false
+}
+
+variable "enable_cache_lifecycle" {
+  description = "Enable lifecycle management on regional cache buckets"
+  type        = bool
+  default     = false
+}
+
+variable "enable_bucket_notifications" {
+  description = "Enable bucket notifications for content sync automation (future use)"
+  type        = bool
+  default     = false
+}
+
+variable "storage_public_access_prevention" {
+  description = "Public access prevention setting for storage buckets"
+  type        = string
+  default     = "enforced"
+
+  validation {
+    condition = contains([
+      "enforced",
+      "inherited"
+    ], var.storage_public_access_prevention)
+    error_message = "Public access prevention must be 'enforced' or 'inherited'."
+  }
+}
+
+variable "storage_force_destroy" {
+  description = "Allow bucket deletion even when not empty (USE WITH CAUTION - for development only)"
+  type        = bool
+  default     = false
+}

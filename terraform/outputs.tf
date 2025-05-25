@@ -94,3 +94,65 @@ output "kubectl_access_via_bastions" {
     region => "Connect via: ssh -J ${var.admin_username}@${module.admin.admin_public_ip} ${var.admin_username}@${module.bastion[region].bastion_internal_ip}"
   }
 }
+
+# Storage Outputs
+output "storage_summary" {
+  description = "Summary of all storage resources created"
+  value       = module.storage.storage_summary
+}
+
+output "master_bucket_name" {
+  description = "Name of the master content bucket"
+  value       = module.storage.master_bucket_name
+}
+
+output "regional_bucket_names" {
+  description = "Map of region to regional cache bucket names"
+  value       = module.storage.regional_bucket_names
+}
+
+output "content_admin_sa_email" {
+  description = "Email of the content admin service account"
+  value       = module.storage.content_admin_sa_email
+}
+
+output "content_reader_sa_email" {
+  description = "Email of the content reader service account"
+  value       = module.storage.content_reader_sa_email
+}
+
+output "gsutil_sync_commands" {
+  description = "Example gsutil commands for content synchronization"
+  value       = module.storage.gsutil_sync_commands
+}
+
+output "workload_identity_annotation" {
+  description = "Annotation to add to Kubernetes service account for Workload Identity"
+  value       = module.storage.workload_identity_annotation
+}
+
+output "csi_driver_config" {
+  description = "Configuration for GCS FUSE CSI driver per region"
+  value       = module.storage.csi_driver_config
+}
+
+# Content Management Instructions
+output "content_management_instructions" {
+  description = "Instructions for content upload and management"
+  value = {
+    upload_directory = "/opt/content/uploads/"
+    master_bucket   = module.storage.master_bucket_name
+    regional_buckets = module.storage.regional_bucket_names
+    sync_commands = {
+      to_master = "gsutil -m rsync -r -d /opt/content/uploads/ gs://${module.storage.master_bucket_name}/"
+      to_regions = {
+        for region in var.regions :
+        region => "gsutil -m rsync -r -d gs://${module.storage.master_bucket_name}/ gs://${module.storage.regional_bucket_names[region]}/"
+      }
+    }
+    service_accounts = {
+      admin_sa  = module.storage.content_admin_sa_email
+      reader_sa = module.storage.content_reader_sa_email
+    }
+  }
+}

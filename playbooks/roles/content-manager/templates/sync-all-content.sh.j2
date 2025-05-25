@@ -1,0 +1,49 @@
+#!/bin/bash
+# Complete content distribution workflow
+
+set -euo pipefail
+
+UPLOAD_DIR="{{ content_upload_dir }}"
+SCRIPTS_DIR="{{ content_scripts_dir }}"
+LOG_DIR="{{ content_logs_dir }}"
+LOG_FILE="$LOG_DIR/sync-all-$(date +%Y%m%d-%H%M%S).log"
+
+mkdir -p "$LOG_DIR"
+
+echo "Starting complete content distribution..."
+
+# Check upload directory
+if [[ ! -d "$UPLOAD_DIR" ]]; then
+    echo "Error: Upload directory does not exist: $UPLOAD_DIR"
+    exit 1
+fi
+
+file_count=$(find "$UPLOAD_DIR" -type f | wc -l)
+if [[ $file_count -eq 0 ]]; then
+    echo "No files found in upload directory"
+    exit 0
+fi
+
+echo "Found $file_count files to distribute"
+
+# Step 1: Sync to master
+echo "Step 1: Syncing to master bucket..."
+if "$SCRIPTS_DIR/sync-to-master.sh"; then
+    echo "✅ Master sync completed"
+else
+    echo "❌ Master sync failed"
+    exit 1
+fi
+
+# Step 2: Sync to regions
+echo "Step 2: Syncing to regional buckets..."
+if "$SCRIPTS_DIR/sync-to-regions.sh"; then
+    echo "✅ Regional sync completed"
+else
+    echo "❌ Regional sync failed"
+    exit 1
+fi
+
+echo "🎉 Content distribution completed successfully!"
+echo "Content available at: https://{{ domain_name }}/videos/"
+echo "Log: $LOG_FILE"

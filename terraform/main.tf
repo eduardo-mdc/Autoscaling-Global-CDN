@@ -55,6 +55,26 @@ module "admin" {
   all_regions = var.regions
 }
 
+# Create storage buckets (can run in parallel with networking)
+module "storage" {
+  source = "./modules/storage"
+
+  project_id   = var.project_id
+  project_name = var.project_name
+  regions      = var.regions
+
+  # Storage configuration
+  master_bucket_location           = var.master_bucket_location
+  environment                     = var.environment
+  enable_versioning               = var.enable_storage_versioning
+  enable_regional_versioning      = var.enable_regional_storage_versioning
+  enable_lifecycle_management     = var.enable_storage_lifecycle
+  enable_cache_lifecycle_management = var.enable_cache_lifecycle
+  enable_bucket_notifications     = var.enable_bucket_notifications
+  public_access_prevention        = var.storage_public_access_prevention
+  force_destroy                   = var.storage_force_destroy
+}
+
 # Create VPC networks in each region (depends on admin)
 module "network" {
   source   = "./modules/network"

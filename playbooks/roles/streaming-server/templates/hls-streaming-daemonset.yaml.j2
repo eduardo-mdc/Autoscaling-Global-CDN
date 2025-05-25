@@ -23,7 +23,6 @@ spec:
         prometheus.io/path: "/metrics"
     spec:
       affinity:
-        # Distribute pods across nodes
         podAntiAffinity:
           preferredDuringSchedulingIgnoredDuringExecution:
             - weight: {{ pod_anti_affinity_weight | default('100') }}
@@ -39,26 +38,23 @@ spec:
         - name: {{ app_name }}
           image: {{ docker_hub_image | default('nginx:alpine') }}:{{ docker_hub_tag | default('latest') }}
           ports:
-            - containerPort: {{ app_http_port | default('80') }}
+            - containerPort: 80
               name: http
-              protocol: TCP
-            - containerPort: {{ app_https_port | default('443') }}
-              name: https
               protocol: TCP
             - containerPort: {{ metrics_port | default('9090') }}
               name: metrics
               protocol: TCP
           resources:
             requests:
-              memory: "{{ app_memory_request | default('256Mi') }}"
-              cpu: "{{ app_cpu_request | default('100m') }}"
+              memory: "{{ app_memory_request | default('32Mi') }}"
+              cpu: "{{ app_cpu_request | default('10m') }}"
             limits:
-              memory: "{{ app_memory_limit | default('512Mi') }}"
-              cpu: "{{ app_cpu_limit | default('500m') }}"
+              memory: "{{ app_memory_limit | default('64Mi') }}"
+              cpu: "{{ app_cpu_limit | default('50m') }}"
           readinessProbe:
             httpGet:
-              path: {{ app_health_path | default('/health') }}
-              port: {{ app_http_port | default('80') }}
+              path: /health
+              port: 80
               scheme: HTTP
             initialDelaySeconds: {{ app_readiness_delay | default('10') }}
             periodSeconds: {{ app_health_period | default('5') }}
@@ -66,8 +62,8 @@ spec:
             failureThreshold: 3
           livenessProbe:
             httpGet:
-              path: {{ app_health_path | default('/health') }}
-              port: {{ app_http_port | default('80') }}
+              path: /health
+              port: 80
               scheme: HTTP
             initialDelaySeconds: {{ app_liveness_delay | default('15') }}
             periodSeconds: {{ app_liveness_period | default('15') }}
@@ -101,11 +97,14 @@ spec:
               mountPath: /etc/nginx/nginx.conf
               subPath: nginx.conf
               readOnly: true
-            - name: ssl-certs
-              mountPath: /etc/nginx/ssl
+            - name: html-content
+              mountPath: /usr/share/nginx/html
               readOnly: true
-            - name: hls-cache
-              mountPath: {{ cache_mount_path | default('/var/cache/nginx/hls') }}
+            - name: hls-tmp
+              mountPath: /tmp/hls
+            - name: videos-storage
+              mountPath: /mnt/videos
+              readOnly: true
             - name: nginx-temp
               mountPath: /var/cache/nginx/temp
             - name: nginx-logs
@@ -127,14 +126,14 @@ spec:
           configMap:
             name: {{ app_name }}-nginx-config
             defaultMode: 0644
-        - name: ssl-certs
+        - name: html-content
           configMap:
-            name: {{ app_name }}-ssl-certs
-            defaultMode: 0600
-        - name: hls-cache
-          hostPath:
-            path: {{ cache_host_path | default('/var/cache/nginx/hls') }}
-            type: DirectoryOrCreate
+            name: {{ app_name }}-html-content
+            defaultMode: 0644
+        - name: hls-tmp
+          emptyDir: {}
+        - name: videos-storage
+          emptyDir: {}  # This will be replaced with CSI driver mount later
         - name: nginx-temp
           emptyDir: {}
         - name: nginx-logs

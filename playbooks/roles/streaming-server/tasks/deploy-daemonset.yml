@@ -1,18 +1,29 @@
 ---
-# Deploy HLS streaming server DaemonSet
+# Deploy HLS streaming DaemonSet
 # File: playbooks/roles/streaming-server/tasks/deploy-daemonset.yml
 
-- name: Generate HLS streaming DaemonSet manifest
+- name: Generate HLS streaming DaemonSet
   template:
     src: hls-streaming-daemonset.yaml.j2
     dest: "{{ manifests_dir }}/hls-streaming-daemonset.yaml"
 
-- name: Apply streaming DaemonSet
+- name: Debug generated DaemonSet manifest (first 15 lines)
+  shell: "head -15 {{ manifests_dir }}/hls-streaming-daemonset.yaml"
+  register: daemonset_manifest_preview
+
+- name: Show DaemonSet manifest preview
+  debug:
+    msg: |
+      Generated HLS DaemonSet manifest preview:
+      {{ daemonset_manifest_preview.stdout_lines | join('\n') }}
+
+- name: Apply HLS streaming DaemonSet
   k8s:
     state: present
     src: "{{ manifests_dir }}/hls-streaming-daemonset.yaml"
+    wait: true
 
-- name: Sleep to allow DaemonSet to start scheduling
+- name: Wait for DaemonSet to start scheduling
   pause:
     seconds: 30
 
@@ -24,15 +35,6 @@
     namespace: "{{ app_namespace }}"
   register: daemonset_status
 
-- name: Display DaemonSet status
-  debug:
-    msg: |
-      DaemonSet {{ app_name }} status:
-      - Desired: {{ daemonset_status.resources[0].status.desiredNumberScheduled | default('unknown') }}
-      - Ready: {{ daemonset_status.resources[0].status.numberReady | default('0') }}
-      - Available: {{ daemonset_status.resources[0].status.numberAvailable | default('0') }}
-      - Updated: {{ daemonset_status.resources[0].status.updatedNumberScheduled | default('0') }}
-
 - name: Get pod status
   k8s_info:
     api_version: v1
@@ -42,21 +44,63 @@
       - "app={{ app_name }}"
   register: pod_status
 
-- name: Display pod status
+- name: Display DaemonSet deployment status
   debug:
     msg: |
-      Found {{ pod_status.resources | length }} pods for {{ app_name }}:
+      🎬 HLS DaemonSet Deployment Status:
+      
+      🎯 DaemonSet: {{ app_name }}
+      - Desired: {{ daemonset_status.resources[0].status.desiredNumberScheduled | default('unknown') }}
+      - Ready: {{ daemonset_status.resources[0].status.numberReady | default('0') }}
+      - Available: {{ daemonset_status.resources[0].status.numberAvailable | default('0') }}
+      - Updated: {{ daemonset_status.resources[0].status.updatedNumberScheduled | default('0') }}
+      
+      🏃 Pods: {{ pod_status.resources | length }} found
       {% for pod in pod_status.resources %}
       - {{ pod.metadata.name }}: {{ pod.status.phase }} on {{ pod.spec.nodeName | default('unknown') }}
       {% endfor %}
 
-- name: Show quick debug info if needed
+- name: Display endpoints and test commands
   debug:
     msg: |
-      Quick debug commands:
-      - Pod logs: kubectl -n {{ app_namespace }} logs -l app={{ app_name }} --tail=20
-      - Pod details: kubectl -n {{ app_namespace }} describe pods -l app={{ app_name }}
-      - Recent events: kubectl -n {{ app_namespace }} get events --sort-by=.metadata.creationTimestamp | tail -10
+      🌐 Available Endpoints:
+      - Main Page: http://{{ domain_name }}/
+      - HTTPS: https://{{ domain_name }}/
+      - Videos: http://{{ domain_name }}/videos/
+      - Live Streaming: http://{{ domain_name }}/live/
+      - HLS Streams: http://{{ domain_name }}/hls/
+      - Static Files: http://{{ domain_name }}/files/
+      - Health Check: http://{{ domain_name }}/health
+      
+      🧪 Test Commands:
+      # Test main page
+      curl http://{{ domain_name }}/
+      
+      # Test health check
+      curl http://{{ domain_name }}/health
+      
+      # Test your video content
+      curl -I http://{{ domain_name }}/videos/Obi-Wan%20-%20Hello%20there..mp4
+      
+      # Check pod logs
+      kubectl -n {{ app_namespace }} logs -l app={{ app_name }} --tail=20
+
+- name: Show troubleshooting info if pods not ready
+  debug:
+    msg: |
+      🔧 Troubleshooting Commands:
+      
+      # Describe pods for detailed status
+      kubectl -n {{ app_namespace }} describe pods -l app={{ app_name }}
+      
+      # Check recent events
+      kubectl -n {{ app_namespace }} get events --sort-by=.metadata.creationTimestamp | tail -10
+      
+      # Check DaemonSet details
+      kubectl -n {{ app_namespace }} describe daemonset {{ app_name }}
+      
+      # Check ConfigMaps are available
+      kubectl -n {{ app_namespace }} get configmaps
   when:
     - daemonset_status.resources[0].status.numberReady | default(0) | int == 0
     - pod_status.resources | length > 0
@@ -64,8 +108,15 @@
 - name: Verify DaemonSet deployment success
   debug:
     msg: |
-      ✅ DaemonSet {{ app_name }} has been deployed.
-      Check the status above. If pods are not ready, you can:
-      - Check pod logs: kubectl -n {{ app_namespace }} logs -l app={{ app_name }}
-      - Describe pods: kubectl -n {{ app_namespace }} describe pods -l app={{ app_name }}
-      - Check events: kubectl -n {{ app_namespace }} get events
+      ✅ HLS Streaming DaemonSet deployment completed!
+      
+      📊 Summary:
+      - DaemonSet: {{ app_name }}
+      - Desired Pods: {{ daemonset_status.resources[0].status.desiredNumberScheduled | default('0') }}
+      - Ready Pods: {{ daemonset_status.resources[0].status.numberReady | default('0') }}
+      - Image: {{ docker_hub_image | default('nginx:alpine') }}:{{ docker_hub_tag | default('latest') }}
+      
+      🎯 Next Steps:
+      1. Test the endpoints listed above
+      2. Deploy storage CSI driver to mount video content
+      3. Verify video streaming works

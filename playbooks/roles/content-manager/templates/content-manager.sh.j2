@@ -1,0 +1,212 @@
+#!/bin/bash
+# playbooks/roles/content-manager/templates/content-manager.sh.j2
+# Content management utility script with help and status information
+
+set -euo pipefail
+
+# Configuration
+UPLOAD_DIR="{{ content_upload_dir }}"
+SCRIPTS_DIR="{{ content_scripts_dir }}"
+MASTER_BUCKET="gs://{{ master_bucket_name }}"
+LOG_DIR="{{ content_logs_dir }}"
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+NC='\033[0m' # No Color
+
+print_header() {
+    echo -e "${BLUE}==========================================${NC}"
+    echo -e "${BLUE}    Content Distribution Manager         ${NC}"
+    echo -e "${BLUE}==========================================${NC}"
+    echo
+}
+
+show_help() {
+    print_header
+
+    echo -e "${CYAN}📋 CONTENT MANAGEMENT COMMANDS${NC}"
+    echo
+    echo -e "${GREEN}Quick Commands (available as aliases):${NC}"
+    echo "  upload-content   Navigate to upload directory"
+    echo "  sync-master      Sync uploads to master bucket"
+    echo "  sync-regions     Sync master to regional buckets"
+    echo "  sync-all         Complete distribution (upload→master→regions)"
+    echo "  list-content     List content in all buckets"
+    echo "  content-help     Show this help"
+    echo
+    echo -e "${GREEN}Script Commands:${NC}"
+    echo "  $SCRIPTS_DIR/sync-to-master.sh      Detailed master sync"
+    echo "  $SCRIPTS_DIR/sync-to-regions.sh     Detailed regional sync"
+    echo "  $SCRIPTS_DIR/sync-all-content.sh    Complete distribution"
+    echo "  $SCRIPTS_DIR/list-content.sh        List bucket contents"
+    echo "  $SCRIPTS_DIR/cleanup-content.sh     Clean up old content"
+    echo
+    echo -e "${CYAN}📁 CONTENT WORKFLOW${NC}"
+    echo
+    echo "1️⃣  Upload your video files:"
+    echo "   scp video.mp4 {{ admin_username }}@{{ admin_public_ip }}:{{ content_upload_dir }}/"
+    echo "   # or use: upload-content (to navigate to upload dir)"
+    echo
+    echo "2️⃣  Distribute content globally:"
+    echo "   sync-all"
+    echo "   # This syncs: uploads → master → regional caches"
+    echo
+    echo "3️⃣  Verify content is available:"
+    echo "   curl https://{{ domain_name }}/videos/video.mp4"
+    echo
+    echo -e "${CYAN}🗂️ DIRECTORY STRUCTURE${NC}"
+    echo
+    echo "  {{ content_upload_dir }}/     📁 Upload your videos here"
+    echo "  {{ content_scripts_dir }}/    🔧 Management scripts"
+    echo "  {{ content_logs_dir }}/       📝 Sync logs and history"
+    echo "  {{ content_temp_dir }}/       🗃️ Temporary processing"
+    echo
+    echo -e "${CYAN}☁️ STORAGE BUCKETS${NC}"
+    echo
+    echo "  📦 Master: {{ master_bucket_name }}"
+    echo "     Location: EU (multi-regional)"
+    echo "     Purpose: Content ingestion and master storage"
+    echo
+    echo "  🌍 Regional Cache Buckets:"
+{% for region, bucket_name in regional_bucket_names.items() %}
+    echo "     📍 {{ region }}: {{ bucket_name }}"
+{% endfor %}
+    echo
+    echo -e "${CYAN}🔗 ACCESS URLs${NC}"
+    echo
+    echo "  🌐 Global: https://{{ domain_name }}/videos/"
+    echo "  🏥 Health: https://{{ domain_name }}/health"
+    echo "  📊 Status: https://{{ domain_name }}/videos/ (directory listing)"
+    echo
+    echo -e "${CYAN}📊 MONITORING & LOGS${NC}"
+    echo
+    echo "  📝 Sync logs: $LOG_DIR/"
+    echo "  🔍 Recent logs: ls -la $LOG_DIR/ | tail -5"
+    echo "  📈 Bucket usage: gsutil du -sh gs://{{ master_bucket_name }}"
+    echo
+    echo -e "${CYAN}🆘 TROUBLESHOOTING${NC}"
+    echo
+    echo "  ❌ Sync fails:"
+    echo "     • Check service account permissions"
+    echo "     • Verify bucket accessibility: gsutil ls gs://{{ master_bucket_name }}/"
+    echo "     • Check logs in: $LOG_DIR/"
+    echo
+    echo "  ❌ Content not accessible:"
+    echo "     • Wait 2-3 minutes for CDN propagation"
+    echo "     • Check if pods are running: (from bastions)"
+    echo "       kubectl -n streaming get pods"
+    echo "     • Verify content exists: list-content"
+    echo
+    echo "  ❌ Large file uploads slow:"
+    echo "     • Use gsutil directly for files >5GB"
+    echo "     • Enable parallel uploads (already configured)"
+    echo "     • Consider regional upload (upload directly to regional bucket)"
+    echo
+}
+
+show_status() {
+    print_header
+
+    echo -e "${CYAN}📊 CONTENT DISTRIBUTION STATUS${NC}"
+    echo
+
+    # Check upload directory
+    if [[ -d "$UPLOAD_DIR" ]]; then
+        upload_count=$(find "$UPLOAD_DIR" -type f | wc -l)
+        upload_size=$(du -sh "$UPLOAD_DIR" 2>/dev/null | cut -f1 || echo "0B")
+        echo -e "${GREEN}📁 Upload Directory:${NC} $UPLOAD_DIR"
+        echo "   Files waiting: $upload_count"
+        echo "   Total size: $upload_size"
+    else
+        echo -e "${RED}❌ Upload directory not found: $UPLOAD_DIR${NC}"
+    fi
+
+    echo
+
+    # Check master bucket
+    echo -e "${GREEN}📦 Master Bucket:${NC} {{ master_bucket_name }}"
+    if gsutil ls "$MASTER_BUCKET/" >/dev/null 2>&1; then
+        master_count=$(gsutil ls "$MASTER_BUCKET/**" 2>/dev/null | wc -l || echo "0")
+        master_size=$(gsutil du -sh "$MASTER_BUCKET" 2>/dev/null | cut -f1 || echo "0B")
+        echo "   Objects: $master_count"
+        echo "   Size: $master_size"
+        echo "   Status: ✅ Accessible"
+    else
+        echo "   Status: ❌ Not accessible"
+    fi
+
+    echo
+
+    # Check regional buckets
+    echo -e "${GREEN}🌍 Regional Cache Buckets:${NC}"
+{% for region, bucket_name in regional_bucket_names.items() %}
+    if gsutil ls "gs://{{ bucket_name }}/" >/dev/null 2>&1; then
+        regional_count=$(gsutil ls "gs://{{ bucket_name }}/**" 2>/dev/null | wc -l || echo "0")
+        echo "   📍 {{ region }}: $regional_count objects ✅"
+    else
+        echo "   📍 {{ region }}: ❌ Not accessible"
+    fi
+{% endfor %}
+
+    echo
+
+    # Check recent activity
+    echo -e "${GREEN}📝 Recent Activity:${NC}"
+    if [[ -d "$LOG_DIR" ]]; then
+        recent_logs=$(ls -t "$LOG_DIR"/*.log 2>/dev/null | head -3 || echo "")
+        if [[ -n "$recent_logs" ]]; then
+            while IFS= read -r log_file; do
+                log_date=$(stat -f%Sm -t"%Y-%m-%d %H:%M" "$log_file" 2>/dev/null || stat -c%y "$log_file" 2>/dev/null | cut -d' ' -f1-2)
+                log_name=$(basename "$log_file")
+                echo "   📄 $log_name ($log_date)"
+            done <<< "$recent_logs"
+        else
+            echo "   No recent sync logs found"
+        fi
+    else
+        echo "   Log directory not found"
+    fi
+
+    echo
+
+    # Check web accessibility
+    echo -e "${GREEN}🌐 Web Accessibility:${NC}"
+    echo -n "   Testing https://{{ domain_name }}/health ... "
+    if curl -I "https://{{ domain_name }}/health" -m 10 -s >/dev/null 2>&1; then
+        echo "✅"
+    else
+        echo "❌"
+    fi
+
+    echo -n "   Testing https://{{ domain_name }}/videos/ ... "
+    if curl -I "https://{{ domain_name }}/videos/" -m 10 -s >/dev/null 2>&1; then
+        echo "✅"
+    else
+        echo "❌"
+    fi
+}
+
+# Main script logic
+case "${1:-help}" in
+    --help|help|-h)
+        show_help
+        ;;
+    --status|status|-s)
+        show_status
+        ;;
+    *)
+        echo "Content Distribution Manager"
+        echo
+        echo "Usage: $0 [--help|--status]"
+        echo
+        echo "Options:"
+        echo "  --help, -h     Show detailed help and usage"
+        echo "  --status, -s   Show current system status"
+        echo
+        echo "Quick start: $0 --help"
+        ;;
+esac

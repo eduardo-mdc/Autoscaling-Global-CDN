@@ -1,0 +1,220 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ app_name }}-html-content
+  namespace: {{ app_namespace }}
+  labels:
+    app: {{ app_name }}
+    config-type: html-content
+data:
+  index.html: |
+    <!DOCTYPE html>
+    <html lang="pt-BR">
+    <head>
+        <meta charset="UTF-8" />
+        <title>Bem-vindo à CDN</title>
+        <style>
+            body {
+                font-family: Arial, sans-serif;
+                text-align: center;
+                background: #0a1e3d;
+                color: white;
+                margin-top: 10vh;
+            }
+            h1 {
+                font-size: 3rem;
+            }
+            p {
+                font-size: 1.2rem;
+            }
+            .info {
+                margin-top: 2rem;
+                padding: 1rem;
+                background: rgba(255,255,255,0.1);
+                border-radius: 10px;
+                display: inline-block;
+            }
+            .links {
+                margin-top: 2rem;
+            }
+            .links a {
+                color: #4a9eff;
+                text-decoration: none;
+                margin: 0 1rem;
+                padding: 0.5rem 1rem;
+                border: 1px solid #4a9eff;
+                border-radius: 5px;
+                display: inline-block;
+                margin-top: 0.5rem;
+            }
+            .links a:hover {
+                background: #4a9eff;
+                color: white;
+            }
+        </style>
+    </head>
+    <body>
+    <h1>Conexão estabelecida com a CDN</h1>
+    <p>Você foi direcionado ao servidor da região: <strong id="region">{{ ansible_hostname | default('Unknown') }}</strong></p>
+
+    <div class="info">
+        <p><strong>Pod:</strong> <span id="pod-name">{{ ansible_hostname | default('streaming-server') }}</span></p>
+        <p><strong>Streaming Type:</strong> HLS</p>
+        <p><strong>Status:</strong> ✅ Online</p>
+    </div>
+
+    <div class="links">
+        <a href="/live/">🎬 Live Streaming</a>
+        <a href="/videos/">📹 Video Library</a>
+        <a href="/files/">📁 Static Files</a>
+        <a href="/hls/">🎵 HLS Streams</a>
+        <a href="/health">❤️ Health Check</a>
+    </div>
+
+    <script>
+        // Try to get pod info from environment if available
+        fetch('/api/pod-info')
+            .then(response => response.json())
+            .then(data => {
+                if (data.podName) document.getElementById('pod-name').textContent = data.podName;
+                if (data.region) document.getElementById('region').textContent = data.region;
+            })
+            .catch(() => {
+                // Fallback - try to detect region from hostname or other clues
+                const hostname = window.location.hostname;
+                if (hostname.includes('europe')) {
+                    document.getElementById('region').textContent = 'Europe West';
+                } else if (hostname.includes('asia')) {
+                    document.getElementById('region').textContent = 'Asia Southeast';
+                } else if (hostname.includes('us')) {
+                    document.getElementById('region').textContent = 'US South';
+                }
+            });
+    </script>
+    </body>
+    </html>
+
+  live-index.html: |
+    <!DOCTYPE html>
+    <html lang="pt-BR">
+    <head>
+        <meta charset="UTF-8" />
+        <title>Live Streaming - CDN</title>
+        <style>
+            body {
+                font-family: Arial, sans-serif;
+                text-align: center;
+                background: #0a1e3d;
+                color: white;
+                margin: 2rem;
+            }
+            h1 {
+                font-size: 2.5rem;
+                margin-bottom: 1rem;
+            }
+            .video-container {
+                max-width: 800px;
+                margin: 2rem auto;
+                background: rgba(255,255,255,0.1);
+                padding: 2rem;
+                border-radius: 10px;
+            }
+            video {
+                width: 100%;
+                max-width: 720px;
+                height: auto;
+                background: #000;
+                border-radius: 5px;
+            }
+            .controls {
+                margin-top: 1rem;
+            }
+            .controls button {
+                background: #4a9eff;
+                color: white;
+                border: none;
+                padding: 0.5rem 1rem;
+                margin: 0.5rem;
+                border-radius: 5px;
+                cursor: pointer;
+            }
+            .controls button:hover {
+                background: #3580cc;
+            }
+            .info {
+                margin-top: 1rem;
+                font-size: 0.9rem;
+                opacity: 0.8;
+            }
+            .back-link {
+                position: absolute;
+                top: 2rem;
+                left: 2rem;
+                color: #4a9eff;
+                text-decoration: none;
+            }
+        </style>
+    </head>
+    <body>
+    <a href="/" class="back-link">← Voltar ao início</a>
+
+    <h1>🎬 Live Streaming</h1>
+
+    <div class="video-container">
+        <video id="video" controls autoplay muted>
+            <source src="/hls/stream.m3u8" type="application/vnd.apple.mpegurl">
+            Your browser does not support HLS streaming.
+        </video>
+
+        <div class="controls">
+            <button onclick="playStream()">▶️ Play</button>
+            <button onclick="pauseStream()">⏸️ Pause</button>
+            <button onclick="reloadStream()">🔄 Reload</button>
+        </div>
+
+        <div class="info">
+            <p>Stream URL: /hls/stream.m3u8</p>
+            <p>Format: HLS (HTTP Live Streaming)</p>
+            <p>Status: <span id="stream-status">Checking...</span></p>
+        </div>
+    </div>
+
+    <script>
+        const video = document.getElementById('video');
+        const statusElement = document.getElementById('stream-status');
+
+        function playStream() {
+            video.play();
+        }
+
+        function pauseStream() {
+            video.pause();
+        }
+
+        function reloadStream() {
+            video.load();
+        }
+
+        // Check stream availability
+        fetch('/hls/stream.m3u8')
+            .then(response => {
+                if (response.ok) {
+                    statusElement.textContent = '✅ Stream Available';
+                    statusElement.style.color = '#4ade80';
+                } else {
+                    statusElement.textContent = '❌ Stream Not Available';
+                    statusElement.style.color = '#ef4444';
+                }
+            })
+            .catch(() => {
+                statusElement.textContent = '❌ Stream Not Available';
+                statusElement.style.color = '#ef4444';
+            });
+
+        // Basic HLS support for Safari
+        if (video.canPlayType('application/vnd.apple.mpegurl')) {
+            video.src = '/hls/stream.m3u8';
+        }
+    </script>
+    </body>
+    </html>

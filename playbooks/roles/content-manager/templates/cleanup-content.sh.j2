@@ -1,0 +1,265 @@
+#!/bin/bash
+# playbooks/roles/content-manager/templates/cleanup-content.sh.j2
+# Script to clean up old content and logs
+
+set -euo pipefail
+
+# Configuration
+UPLOAD_DIR="{{ content_upload_dir }}"
+LOG_DIR="{{ content_logs_dir }}"
+TEMP_DIR="{{ content_temp_dir }}"
+LOG_RETENTION_DAYS={{ log_retention_days }}
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+print_status() {
+    echo -e "${GREEN}[INFO]${NC} $1"
+}
+
+print_warning() {
+    echo -e "${YELLOW}[WARN]${NC} $1"
+}
+
+print_error() {
+    echo -e "${RED}[ERROR]${NC} $1"
+}
+
+print_header() {
+    echo -e "${BLUE}==============================${NC}"
+    echo -e "${BLUE}  Content Cleanup Utility    ${NC}"
+    echo -e "${BLUE}==============================${NC}"
+    echo
+}
+
+cleanup_logs() {
+    print_status "Cleaning up old log files..."
+
+    if [[ ! -d "$LOG_DIR" ]]; then
+        print_warning "Log directory not found: $LOG_DIR"
+        return
+    fi
+
+    # Find logs older than retention period
+    old_logs=$(find "$LOG_DIR" -name "*.log" -type f -mtime +$LOG_RETENTION_DAYS 2>/dev/null || true)
+
+    if [[ -n "$old_logs" ]]; then
+        log_count=$(echo "$old_logs" | wc -l)
+        print_status "Found $log_count log files older than $LOG_RETENTION_DAYS days"
+
+        echo "$old_logs" | while read -r log_file; do
+            echo "  - $(basename "$log_file")"
+        done
+
+        echo
+        read -p "Delete these old log files? (y/N): " -n 1 -r
+        echo
+
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            echo "$old_logs" | xargs rm -f
+            print_status "✅ Old log files deleted"
+        else
+            print_status "Log cleanup cancelled"
+        fi
+    else
+        print_status "No old log files found (retention: $LOG_RETENTION_DAYS days)"
+    fi
+}
+
+cleanup_temp() {
+    print_status "Cleaning up temporary files..."
+
+    if [[ ! -d "$TEMP_DIR" ]]; then
+        print_warning "Temp directory not found: $TEMP_DIR"
+        return
+    fi
+
+    temp_files=$(find "$TEMP_DIR" -type f 2>/dev/null || true)
+
+    if [[ -n "$temp_files" ]]; then
+        temp_count=$(echo "$temp_files" | wc -l)
+        temp_size=$(du -sh "$TEMP_DIR" 2>/dev/null | cut -f1)
+
+        print_status "Found $temp_count temporary files ($temp_size total)"
+
+        echo
+        read -p "Clean up temporary files? (y/N): " -n 1 -r
+        echo
+
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            rm -rf "${TEMP_DIR:?}"/*
+            print_status "✅ Temporary files cleaned"
+        else
+            print_status "Temp cleanup cancelled"
+        fi
+    else
+        print_status "No temporary files found"
+    fi
+}
+
+cleanup_uploads() {
+    print_status "Checking upload directory..."
+
+    if [[ ! -d "$UPLOAD_DIR" ]]; then
+        print_warning "Upload directory not found: $UPLOAD_DIR"
+        return
+    fi
+
+    upload_files=$(find "$UPLOAD_DIR" -type f 2>/dev/null || true)
+
+    if [[ -n "$upload_files" ]]; then
+        upload_count=$(echo "$upload_files" | wc -l)
+        upload_size=$(du -sh "$UPLOAD_DIR" 2>/dev/null | cut -f1)
+
+        print_warning "Found $upload_count files in upload directory ($upload_size total)"
+        print_warning "These files have been uploaded but not yet cleaned from local storage"
+
+        echo
+        echo "Files in upload directory:"
+        echo "$upload_files" | while read -r file; do
+            filename=$(basename "$file")
+            file_size=$(du -sh "$file" 2>/dev/null | cut -f1)
+            echo "  - $filename ($file_size)"
+        done
+
+        echo
+        print_warning "⚠️  Only delete these if you're sure they've been successfully synced!"
+        read -p "Clean up uploaded files? (y/N): " -n 1 -r
+        echo
+
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            read -p "Are you absolutely sure? This cannot be undone! (type 'yes'): " confirm
+            if [[ "$confirm" == "yes" ]]; then
+                rm -f "${UPLOAD_DIR:?}"/*
+                print_status "✅ Upload directory cleaned"
+            else
+                print_status "Upload cleanup cancelled"
+            fi
+        else
+            print_status "Upload cleanup cancelled"
+        fi
+    else
+        print_status "Upload directory is clean"
+    fi
+}
+
+show_disk_usage() {
+    print_status "Disk usage summary:"
+    echo
+
+    if [[ -d "$UPLOAD_DIR" ]]; then
+        upload_size=$(du -sh "$UPLOAD_DIR" 2>/dev/null | cut -f1)
+        echo "  📁 Uploads: $upload_size ($UPLOAD_DIR)"
+    fi
+
+    if [[ -d "$LOG_DIR" ]]; then
+        log_size=$(du -sh "$LOG_DIR" 2>/dev/null | cut -f1)
+        log_files=$(find "$LOG_DIR" -name "*.log" -type f | wc -l)
+        echo "  📝 Logs: $log_size ($log_files files in $LOG_DIR)"
+    fi
+
+    if [[ -d "$TEMP_DIR" ]]; then
+        temp_size=$(du -sh "$TEMP_DIR" 2>/dev/null | cut -f1)
+        echo "  🗃️  Temp: $temp_size ($TEMP_DIR)"
+    fi
+
+    echo
+
+    # Overall disk usage
+    total_usage=$(df -h . | awk 'NR==2 {print $3 "/" $2 " (" $5 " used)"}')
+    echo "  💾 Total disk: $total_usage"
+}
+
+# Parse command line arguments
+LOGS_ONLY=false
+TEMP_ONLY=false
+UPLOADS_ONLY=false
+SHOW_USAGE_ONLY=false
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --logs)
+            LOGS_ONLY=true
+            shift
+            ;;
+        --temp)
+            TEMP_ONLY=true
+            shift
+            ;;
+        --uploads)
+            UPLOADS_ONLY=true
+            shift
+            ;;
+        --usage)
+            SHOW_USAGE_ONLY=true
+            shift
+            ;;
+        -h|--help)
+            echo "Usage: $0 [OPTIONS]"
+            echo
+            echo "Options:"
+            echo "  --logs      Clean up old log files only"
+            echo "  --temp      Clean up temporary files only"
+            echo "  --uploads   Clean up upload directory only (DANGEROUS)"
+            echo "  --usage     Show disk usage summary only"
+            echo "  -h, --help  Show this help"
+            echo
+            echo "Examples:"
+            echo "  $0              Interactive cleanup (all categories)"
+            echo "  $0 --logs       Clean up logs older than $LOG_RETENTION_DAYS days"
+            echo "  $0 --usage      Show disk usage summary"
+            exit 0
+            ;;
+        *)
+            echo "Unknown option: $1"
+            echo "Use --help for usage information"
+            exit 1
+            ;;
+    esac
+done
+
+print_header
+
+if [[ "$SHOW_USAGE_ONLY" == true ]]; then
+    show_disk_usage
+    exit 0
+fi
+
+# Show current usage
+show_disk_usage
+echo
+
+# Perform cleanup based on options
+if [[ "$LOGS_ONLY" == true ]]; then
+    cleanup_logs
+elif [[ "$TEMP_ONLY" == true ]]; then
+    cleanup_temp
+elif [[ "$UPLOADS_ONLY" == true ]]; then
+    cleanup_uploads
+else
+    # Interactive cleanup - all categories
+    print_status "🧹 Interactive Content Cleanup"
+    echo
+    print_status "This will help you clean up:"
+    echo "  1️⃣  Old log files (older than $LOG_RETENTION_DAYS days)"
+    echo "  2️⃣  Temporary processing files"
+    echo "  3️⃣  Already-uploaded content files (optional)"
+    echo
+
+    cleanup_logs
+    echo
+    cleanup_temp
+    echo
+    cleanup_uploads
+fi
+
+echo
+print_status "🎉 Cleanup completed!"
+
+# Show final usage
+echo
+show_disk_usage
