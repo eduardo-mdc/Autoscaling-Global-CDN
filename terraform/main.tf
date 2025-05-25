@@ -209,6 +209,7 @@ module "ids" {
   # Optional packet mirroring configuration
   packet_mirroring_tags      = []
   packet_mirroring_cidr_ranges = []
+  depends_on = [module.network, module.gke]
 }
 
 # Create monitoring dashboards for load balancer
@@ -236,6 +237,7 @@ module "ids" {
 #   latency_threshold_ms          = 1000
 #   error_rate_threshold_percent  = 5
 #   backend_health_threshold_percent = 80
+#   depends_on = [module.loadbalancer]
 # }
 
 # Create DNS zone and records
@@ -257,4 +259,5 @@ module "dns" {
   
   # Only create DNS resources if domain_name is provided
   count = var.domain_name != "" ? 1 : 0
+  depends_on = [module.loadbalancer, module.admin]
 }
