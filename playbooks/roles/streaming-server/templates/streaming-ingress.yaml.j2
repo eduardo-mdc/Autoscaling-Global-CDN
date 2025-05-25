@@ -22,12 +22,150 @@ metadata:
     # Allow HTTP traffic
     kubernetes.io/ingress.allow-http: "true"
 
-    # No SSL cert needed - this Ingress won't serve traffic
+    # Ingress optimization annotations
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+
 spec:
-  # Remove the TLS section - let the pre-shared-cert annotation handle SSL
   rules:
     # Default rule for all hosts (geographic routing)
     - http:
+        paths:
+          # Root path - Main page
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ app_name }}
+                port:
+                  number: {{ app_http_port | default('80') | int }}
+
+          # Health endpoint - Exact match for load balancer health checks
+          - path: /health
+            pathType: Exact
+            backend:
+              service:
+                name: {{ app_name }}
+                port:
+                  number: {{ app_http_port | default('80') | int }}
+
+          # Metrics endpoint - Exact match for monitoring
+          - path: /metrics
+            pathType: Exact
+            backend:
+              service:
+                name: {{ app_name }}
+                port:
+                  number: {{ metrics_port | default('9090') | int }}
+
+          # HLS streaming endpoint - Prefix for all HLS files (.m3u8, .ts)
+          - path: /hls
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ app_name }}
+                port:
+                  number: {{ app_http_port | default('80') | int }}
+
+          # Video files endpoint - Prefix for video storage
+          - path: /videos
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ app_name }}
+                port:
+                  number: {{ app_http_port | default('80') | int }}
+
+          # Live streaming page - Prefix for live streaming interface
+          - path: /live
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ app_name }}
+                port:
+                  number: {{ app_http_port | default('80') | int }}
+
+          # Static files endpoint - Prefix for general file serving
+          - path: /files
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ app_name }}
+                port:
+                  number: {{ app_http_port | default('80') | int }}
+
+{% if domain_name is defined and domain_name != "" %}
+    # Domain-specific rule (if domain is configured)
+    - host: {{ domain_name }}
+      http:
+        paths:
+          # Root path
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ app_name }}
+                port:
+                  number: {{ app_http_port | default('80') | int }}
+
+          # Health endpoint
+          - path: /health
+            pathType: Exact
+            backend:
+              service:
+                name: {{ app_name }}
+                port:
+                  number: {{ app_http_port | default('80') | int }}
+
+          # Metrics endpoint
+          - path: /metrics
+            pathType: Exact
+            backend:
+              service:
+                name: {{ app_name }}
+                port:
+                  number: {{ metrics_port | default('9090') | int }}
+
+          # HLS streaming
+          - path: /hls
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ app_name }}
+                port:
+                  number: {{ app_http_port | default('80') | int }}
+
+          # Video files
+          - path: /videos
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ app_name }}
+                port:
+                  number: {{ app_http_port | default('80') | int }}
+
+          # Live streaming page
+          - path: /live
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ app_name }}
+                port:
+                  number: {{ app_http_port | default('80') | int }}
+
+          # Static files
+          - path: /files
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ app_name }}
+                port:
+                  number: {{ app_http_port | default('80') | int }}
+
+    # WWW subdomain (if domain is configured)
+    - host: www.{{ domain_name }}
+      http:
         paths:
           - path: /
             pathType: Prefix
@@ -36,17 +174,4 @@ spec:
                 name: {{ app_name }}
                 port:
                   number: {{ app_http_port | default('80') | int }}
-          - path: /health
-            pathType: Exact
-            backend:
-              service:
-                name: {{ app_name }}
-                port:
-                  number: {{ app_http_port | default('80') | int }}
-          - path: /hls
-            pathType: Prefix
-            backend:
-              service:
-                name: {{ app_name }}
-                port:
-                  number: {{ app_http_port | default('80') | int }}
+{% endif %}

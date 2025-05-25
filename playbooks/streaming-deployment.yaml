@@ -1,5 +1,5 @@
 ---
-# Phase-based Streaming Server Deployment
+# Phase-based Streaming Server Deployment with GCS Mount Support
 # Run from external laptop -> admin VM -> bastion hosts
 
 - name: Phase 1a - Prepare Admin VM for K8s Management
@@ -21,9 +21,8 @@
     - common
     - bastion
 
-
 - name: Phase 2 - Deploy Namespace to All Regions
-  hosts: bastion-asia-southeast1 
+  hosts: bastion-asia-southeast1
   become: yes
   gather_facts: yes
   tags: ['phase2', 'namespace']
@@ -36,7 +35,7 @@
         tasks_from: deploy-namespace
 
 - name: Phase 3 - Deploy ConfigMaps to All Regions
-  hosts: bastion-asia-southeast1 
+  hosts: bastion-asia-southeast1
   become: yes
   gather_facts: yes
   tags: ['phase3', 'configmap']
@@ -48,11 +47,25 @@
         name: streaming-server
         tasks_from: deploy-configmap
 
-- name: Phase 4 - Deploy HLS Streaming Server DaemonSet
-  hosts: bastion-asia-southeast1 
+# 🎯 NEW: Phase 4 - Deploy GCS FUSE Mount for Content Access
+- name: Phase 4 - Deploy GCS FUSE Mount
+  hosts: bastion-asia-southeast1
   become: yes
   gather_facts: yes
-  tags: ['phase4', 'streaming']
+  tags: ['phase4', 'gcs-mount', 'storage']
+  serial: 1
+
+  tasks:
+    - name: Deploy GCS FUSE mount
+      include_role:
+        name: streaming-server
+        tasks_from: deploy-gcs-mount
+
+- name: Phase 5 - Deploy HLS Streaming Server DaemonSet
+  hosts: bastion-asia-southeast1
+  become: yes
+  gather_facts: yes
+  tags: ['phase5', 'streaming']
   serial: 1
 
   tasks:
@@ -61,11 +74,11 @@
         name: streaming-server
         tasks_from: deploy-daemonset
 
-- name: Phase 5 - Deploy Services
-  hosts: bastion-asia-southeast1 
+- name: Phase 6 - Deploy Services
+  hosts: bastion-asia-southeast1
   become: yes
   gather_facts: yes
-  tags: ['phase5', 'service']
+  tags: ['phase6', 'service']
   serial: 1
 
   tasks:
@@ -74,11 +87,11 @@
         name: streaming-server
         tasks_from: deploy-service
 
-- name: Phase 6 - Deploy Ingress
+- name: Phase 7 - Deploy Ingress
   hosts: bastion-asia-southeast1
   become: yes
   gather_facts: yes
-  tags: ['phase6', 'ingress']
+  tags: ['phase7', 'ingress']
   serial: 1
 
   tasks:
@@ -87,11 +100,11 @@
         name: streaming-server
         tasks_from: deploy-ingress
 
-- name: Phase 7 - Deploy Monitoring (Optional)
-  hosts: bastion-asia-southeast1 
+- name: Phase 8 - Deploy Monitoring (Optional)
+  hosts: bastion-asia-southeast1
   become: yes
   gather_facts: yes
-  tags: ['phase7', 'monitoring']
+  tags: ['phase8', 'monitoring']
   serial: 1
 
   tasks:
@@ -100,14 +113,58 @@
         name: streaming-server
         tasks_from: deploy-monitoring
 
-- name: Phase 8 - Verification
-  hosts: bastion-asia-southeast1 
+- name: Phase 9 - Comprehensive Verification
+  hosts: bastion-asia-southeast1
   become: yes
   gather_facts: yes
-  tags: ['phase8', 'verify']
+  tags: ['phase9', 'verify']
 
   tasks:
-    - name: Verify deployment
+    - name: Verify deployment with GCS mount
       include_role:
         name: streaming-server
         tasks_from: verify-deployment
+
+# 🎯 NEW: Phase 10 - Content Upload Instructions
+- name: Phase 10 - Display Content Upload Instructions
+  hosts: admin
+  gather_facts: no
+  tags: ['phase10', 'instructions']
+
+  tasks:
+    - name: Display content upload instructions
+      debug:
+        msg: |
+          🎉 DEPLOYMENT COMPLETE!
+          
+          📁 Content Upload Workflow:
+          1. Upload videos to: {{ content_upload_dir }}
+             Example: scp video.mp4 {{ admin_username }}@{{ admin_public_ip }}:{{ content_upload_dir }}/
+          
+          2. Distribute globally: sync-all-content
+             (This syncs: uploads → master bucket → regional buckets → pods)
+          
+          3. Verify access: https://{{ domain_name }}/videos/video.mp4
+          
+          🔧 Management Commands:
+          - Upload content: cd {{ content_upload_dir }} && sync-all
+          - List content: list-content
+          - Test GCS mount: ssh to bastion and run test-gcs-mount.sh
+          - Monitor pods: kubectl logs -f -n streaming -l app=streaming-server
+          
+          📊 Access Points:
+          - Main site: https://{{ domain_name }}
+          - Video library: https://{{ domain_name }}/videos/
+          - Live streaming: https://{{ domain_name }}/live/
+          - Health check: https://{{ domain_name }}/health
+          
+          🗄️  Storage Architecture:
+          - Master bucket: {{ master_bucket_name }} (EU)
+          - Regional caches: Auto-synced to each region's bucket
+          - Pod access: /mnt/videos (mounted via GCS FUSE)
+          
+          ⚡ Next Steps:
+          1. Upload some test videos
+          2. Run sync-all-content
+          3. Test access via web browser
+          4. Monitor performance and scaling

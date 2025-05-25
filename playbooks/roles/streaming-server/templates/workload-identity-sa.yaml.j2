@@ -1,0 +1,17 @@
+# Kubernetes ServiceAccount with Workload Identity for GCS access
+# File: playbooks/roles/streaming-server/templates/workload-identity-sa.yaml.j2
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ app_name }}-sa
+  namespace: {{ app_namespace }}
+  labels:
+    app: {{ app_name }}
+    region: {{ bastion_region }}
+    purpose: gcs-access
+  annotations:
+    # Workload Identity binding to GCP service account
+    iam.gke.io/gcp-service-account: "{{ content_reader_sa_email }}"
+    description: "Service account for {{ app_name }} pods to access GCS content"
+    created-by: "ansible"
+automountServiceAccountToken: true

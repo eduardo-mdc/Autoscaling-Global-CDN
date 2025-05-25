@@ -22,6 +22,9 @@ spec:
         prometheus.io/port: "{{ metrics_port | default('9090') }}"
         prometheus.io/path: "/metrics"
     spec:
+      # Use the Workload Identity ServiceAccount for GCS access
+      serviceAccountName: {{ app_name }}-sa
+
       affinity:
         podAntiAffinity:
           preferredDuringSchedulingIgnoredDuringExecution:
@@ -86,6 +89,11 @@ spec:
               value: "hls"
             - name: NGINX_ENTRYPOINT_QUIET_LOGS
               value: "1"
+            # GCS mount information for debugging
+            - name: GCS_BUCKET_NAME
+              value: "{{ current_bucket_name | default(project_name + '-content-' + bastion_region) }}"
+            - name: REGION
+              value: "{{ bastion_region | default('unknown') }}"
 {% if custom_env_vars is defined %}
 {% for env_var in custom_env_vars %}
             - name: {{ env_var.name }}
@@ -102,6 +110,7 @@ spec:
               readOnly: true
             - name: hls-tmp
               mountPath: /tmp/hls
+            # 🎯 GCS FUSE mount - this is where the magic happens!
             - name: videos-storage
               mountPath: /mnt/videos
               readOnly: true
@@ -132,8 +141,10 @@ spec:
             defaultMode: 0644
         - name: hls-tmp
           emptyDir: {}
+        # 🎯 GCS FUSE volume - mounts regional bucket content
         - name: videos-storage
-          emptyDir: {}  # This will be replaced with CSI driver mount later
+          persistentVolumeClaim:
+            claimName: gcs-videos-pvc
         - name: nginx-temp
           emptyDir: {}
         - name: nginx-logs

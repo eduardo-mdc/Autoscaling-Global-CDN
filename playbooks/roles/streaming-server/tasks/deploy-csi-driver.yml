@@ -1,0 +1,63 @@
+---
+# Minimal GCS FUSE CSI driver deployment
+# File: playbooks/roles/streaming-server/tasks/deploy-csi-minimal.yml
+
+- name: Get current region from bastion hostname
+  shell: "hostname | grep -o 'bastion-[^-]*' | cut -d'-' -f2 || echo 'unknown'"
+  register: current_region
+
+- name: Display current region for CSI driver deployment
+  debug:
+    msg: "🔧 Deploying GCS FUSE CSI driver in region: {{ current_region.stdout }}"
+
+- name: Check if GCS FUSE CSI driver is already installed
+  shell: "kubectl get csidriver gcs-fuse.csi.storage.gke.io --ignore-not-found"
+  register: csi_driver_check
+  changed_when: false
+
+- name: Skip installation if CSI driver already exists
+  debug:
+    msg: "✅ GCS FUSE CSI driver already installed, skipping..."
+  when: csi_driver_check.stdout != ""
+
+- name: Create CSIDriver manually
+  k8s:
+    state: present
+    definition:
+      apiVersion: storage.k8s.io/v1
+      kind: CSIDriver
+      metadata:
+        name: gcs-fuse.csi.storage.gke.io
+      spec:
+        attachRequired: false
+        podInfoOnMount: true
+        volumeLifecycleModes:
+          - Persistent
+        tokenRequests:
+          - audience: "gke.{{ project_id }}.svc.id.goog"
+        requiresRepublish: false
+  when: csi_driver_check.stdout == ""
+  register: manual_csi_driver
+
+- name: Verify CSI driver is available
+  shell: "kubectl get csidriver gcs-fuse.csi.storage.gke.io -o name"
+  register: final_csi_check
+
+- name: Display CSI driver installation result
+  debug:
+    msg: |
+      🔍 GCS FUSE CSI Driver Status:
+      
+      {% if gke_csi_enable is defined and gke_csi_enable.rc == 0 %}
+      ✅ CSI driver enabled via GKE cluster addon
+      {% elif manual_csi_driver is defined and manual_csi_driver.changed %}
+      ✅ CSI driver created manually
+      {% elif csi_driver_check.stdout != "" %}
+      ✅ CSI driver was already installed
+      {% else %}
+      ❌ CSI driver installation status unknown
+      {% endif %}
+      
+      Final status: {{ final_csi_check.stdout }}
+      
+      🎯 Next step: Deploy storage components

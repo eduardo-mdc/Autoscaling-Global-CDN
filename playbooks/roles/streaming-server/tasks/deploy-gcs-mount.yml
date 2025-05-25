@@ -1,0 +1,130 @@
+---
+# Deploy GCS FUSE mount for streaming server
+# File: playbooks/roles/streaming-server/tasks/deploy-gcs-mount.yml
+
+- name: Get current region from bastion hostname
+  shell: "hostname | grep -o 'bastion-[^-]*' | cut -d'-' -f2 || echo 'unknown'"
+  register: current_region
+
+- name: Set bastion region fact
+  set_fact:
+    bastion_region: "{{ current_region.stdout }}"
+
+- name: Debug variable availability
+  debug:
+    msg: |
+      🔍 Debug info:
+      - bastion_region: {{ bastion_region }}
+      - regional_bucket_names: {{ regional_bucket_names | default('NOT DEFINED') }}
+      - content_reader_sa_email: {{ content_reader_sa_email | default('NOT DEFINED') }}
+
+- name: Set regional bucket name with fallback
+  set_fact:
+    current_bucket_name: "{{ regional_bucket_names[bastion_region] | default(project_name + '-content-' + bastion_region) }}"
+
+- name: Display GCS mount deployment info
+  debug:
+    msg: |
+      🗄️  Deploying GCS FUSE mount for region: {{ bastion_region }}
+      
+      📦 Source: gs://{{ current_bucket_name }}
+      📁 Mount path: /mnt/videos (read-only)
+      🔐 Service account: {{ content_reader_sa_email | default('content-reader-sa@' + project_id + '.iam.gserviceaccount.com') }}
+      
+      🔄 Deployment phases:
+      1️⃣  Install GCS FUSE CSI driver
+      2️⃣  Create Workload Identity ServiceAccount  
+      3️⃣  Deploy storage components (StorageClass, PV, PVC)
+      4️⃣  Update DaemonSet to use GCS mount
+
+- name: Phase 1 - Deploy GCS FUSE CSI driver
+  include_tasks: deploy-csi-driver.yml
+  tags: ['gcs-mount', 'csi-driver']
+
+- name: Phase 2 - Deploy Workload Identity ServiceAccount
+  include_tasks: deploy-workload-identity.yml
+  tags: ['gcs-mount', 'workload-identity']
+
+- name: Phase 3 - Deploy storage components
+  include_tasks: deploy-storage.yml
+  tags: ['gcs-mount', 'storage']
+
+- name: Phase 4 - Verify all components are ready
+  block:
+    - name: Check CSI driver is running
+      shell: |
+        kubectl get pods -n gcs-fuse-csi-driver -l app=gcs-fuse-csi-driver --field-selector=status.phase=Running --no-headers | wc -l
+      register: csi_driver_running
+
+    - name: Check PVC is bound
+      shell: |
+        kubectl get pvc gcs-videos-pvc -n {{ app_namespace }} -o jsonpath='{.status.phase}'
+      register: pvc_bound_status
+
+    - name: Check ServiceAccount exists
+      shell: |
+        kubectl get sa {{ app_name }}-sa -n {{ app_namespace }} --no-headers | wc -l
+      register: sa_exists
+
+    - name: Verify all components are ready
+      assert:
+        that:
+          - csi_driver_running.stdout | int > 0
+          - pvc_bound_status.stdout == "Bound"
+          - sa_exists.stdout | int > 0
+        fail_msg: |
+          🚨 GCS mount components not ready:
+          - CSI driver pods running: {{ csi_driver_running.stdout }}
+          - PVC status: {{ pvc_bound_status.stdout }}
+          - ServiceAccount exists: {{ sa_exists.stdout }}
+        success_msg: "✅ All GCS mount components are ready"
+
+- name: Display GCS mount deployment summary
+  debug:
+    msg: |
+      ✅ GCS FUSE Mount Deployment Complete for {{ bastion_region }}
+      
+      📊 Summary:
+      🔧 CSI driver: {{ csi_driver_running.stdout }} pods running
+      🔐 ServiceAccount: {{ app_name }}-sa (Workload Identity enabled)
+      💾 StorageClass: gcs-fuse-{{ bastion_region }}
+      📦 PersistentVolume: gcs-videos-pv-{{ bastion_region }}
+      🎯 PersistentVolumeClaim: gcs-videos-pvc ({{ pvc_bound_status.stdout }})
+      
+      🗂️  Content source: gs://{{ regional_bucket_names[bastion_region] }}
+      📁 Mount path in pods: /mnt/videos (read-only)
+      
+      🎯 Next step: Update DaemonSet to use the GCS mount
+      
+      ⚠️  Important notes:
+      - Pods must use serviceAccountName: {{ app_name }}-sa
+      - Content synced from master bucket appears in /mnt/videos
+      - First mount may take 30-60 seconds for FUSE initialization
+      - Content is cached locally for better performance
+
+- name: Create test content verification script
+  template:
+    src: test-gcs-mount.sh.j2
+    dest: "{{ manifests_dir }}/test-gcs-mount.sh"
+    mode: '0755'
+
+- name: Display post-deployment instructions
+  debug:
+    msg: |
+      🚀 GCS Mount Ready! Next Steps:
+      
+      1️⃣  Update your DaemonSet to use:
+         serviceAccountName: {{ app_name }}-sa
+      
+      2️⃣  Verify mount works:
+         kubectl exec -it <pod-name> -n {{ app_namespace }} -- ls -la /mnt/videos/
+      
+      3️⃣  Test content access:
+         {{ manifests_dir }}/test-gcs-mount.sh
+      
+      4️⃣  Sync content to bucket:
+         # From admin VM:
+         /opt/content/scripts/sync-all-content.sh
+      
+      5️⃣  Access content via web:
+         https://{{ domain_name }}/videos/your-video.mp4
