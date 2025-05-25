@@ -1,0 +1,163 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ app_name }}-nginx-config
+  namespace: {{ app_namespace }}
+  labels:
+    app: {{ app_name }}
+    config-type: nginx
+data:
+  nginx.conf: |
+    worker_processes auto;
+    error_log /var/log/nginx/error.log warn;
+    pid /var/run/nginx.pid;
+
+    events {
+        worker_connections 1024;
+        use epoll;
+        multi_accept on;
+    }
+
+    http {
+        include /etc/nginx/mime.types;
+        default_type application/octet-stream;
+
+        log_format main '$remote_addr - $remote_user [$time_local] "$request" '
+                        '$status $body_bytes_sent "$http_referer" '
+                        '"$http_user_agent" "$http_x_forwarded_for"';
+
+        access_log /var/log/nginx/access.log main;
+
+        sendfile on;
+        tcp_nopush on;
+        tcp_nodelay on;
+        keepalive_timeout 65;
+        types_hash_max_size 2048;
+        client_max_body_size 100M;
+
+        gzip on;
+        gzip_vary on;
+        gzip_proxied any;
+        gzip_comp_level 6;
+        gzip_types text/plain text/css text/xml text/javascript application/json application/javascript application/xml+rss application/atom+xml image/svg+xml application/vnd.apple.mpegurl application/x-mpegurl;
+
+{% if rate_limit_enabled | default(true) %}
+        limit_req_zone $binary_remote_addr zone=hls:10m rate={{ rate_limit_rate | default('10r/s') }};
+{% endif %}
+
+        # HTTP Server
+        server {
+            listen {{ app_http_port | default('80') }};
+            server_name _;
+
+            location /health {
+                access_log off;
+                return 200 "healthy\n";
+                add_header Content-Type text/plain;
+            }
+
+            location /metrics {
+                access_log off;
+                return 200 "# TYPE nginx_up gauge\nnginx_up 1\n";
+                add_header Content-Type text/plain;
+            }
+
+{% if ssl_enabled | default(false) %}
+            # Redirect to HTTPS for HLS content
+            location /hls {
+                return 301 https://$host$request_uri;
+            }
+
+            location / {
+                return 200 "HLS Streaming Server - Use HTTPS for streaming content\n";
+                add_header Content-Type text/plain;
+            }
+        }
+
+        # HTTPS Server
+        server {
+            listen {{ app_https_port | default('443') }} ssl;
+            server_name _;
+
+            ssl_certificate /etc/nginx/ssl/tls.crt;
+            ssl_certificate_key /etc/nginx/ssl/tls.key;
+            ssl_protocols TLSv1.2 TLSv1.3;
+            ssl_ciphers ECDHE-RSA-AES256-GCM-SHA512:DHE-RSA-AES256-GCM-SHA512:ECDHE-RSA-AES256-GCM-SHA384:DHE-RSA-AES256-GCM-SHA384;
+            ssl_prefer_server_ciphers off;
+            ssl_session_cache shared:SSL:10m;
+            ssl_session_timeout 10m;
+
+{% if cors_enabled | default(true) %}
+            add_header 'Access-Control-Allow-Origin' '{{ cors_origins | default('*') }}' always;
+            add_header 'Access-Control-Allow-Methods' '{{ cors_methods | default('GET, POST, OPTIONS') }}' always;
+            add_header 'Access-Control-Allow-Headers' '{{ cors_headers | default('DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range') }}' always;
+            add_header 'Access-Control-Expose-Headers' 'Content-Length,Content-Range' always;
+{% endif %}
+
+            location /hls {
+{% if rate_limit_enabled | default(true) %}
+                limit_req zone=hls burst={{ rate_limit_burst | default('20') }} nodelay;
+{% endif %}
+                add_header 'Cache-Control' 'no-cache' always;
+                add_header 'Access-Control-Allow-Origin' '*' always;
+                root {{ cache_mount_path | default('/var/cache/nginx') }};
+
+                location ~ \.m3u8$ {
+                    add_header 'Content-Type' 'application/vnd.apple.mpegurl' always;
+                    add_header 'Cache-Control' 'no-cache' always;
+                }
+
+                location ~ \.ts$ {
+                    add_header 'Content-Type' 'video/mp2t' always;
+                    add_header 'Cache-Control' 'max-age=3600' always;
+                }
+
+                autoindex on;
+                autoindex_exact_size off;
+                autoindex_localtime on;
+            }
+
+            location /health {
+                access_log off;
+                return 200 "healthy-ssl\n";
+                add_header Content-Type text/plain;
+            }
+
+            location / {
+                return 200 "HLS Streaming Server (HTTPS) - Active\nUse /hls/ for streaming content\n";
+                add_header Content-Type text/plain;
+            }
+{% else %}
+            # HTTP-only HLS streaming (for testing)
+            location /hls {
+{% if rate_limit_enabled | default(true) %}
+                limit_req zone=hls burst={{ rate_limit_burst | default('20') }} nodelay;
+{% endif %}
+                add_header 'Cache-Control' 'no-cache' always;
+{% if cors_enabled | default(true) %}
+                add_header 'Access-Control-Allow-Origin' '{{ cors_origins | default('*') }}' always;
+{% endif %}
+                root {{ cache_mount_path | default('/var/cache/nginx') }};
+
+                location ~ \.m3u8$ {
+                    add_header 'Content-Type' 'application/vnd.apple.mpegurl' always;
+                    add_header 'Cache-Control' 'no-cache' always;
+                }
+
+                location ~ \.ts$ {
+                    add_header 'Content-Type' 'video/mp2t' always;
+                    add_header 'Cache-Control' 'max-age=3600' always;
+                }
+
+                autoindex on;
+                autoindex_exact_size off;
+                autoindex_localtime on;
+            }
+
+            location / {
+                return 200 "HLS Streaming Server (HTTP) - Testing Mode\nUse /hls/ for streaming content\n";
+                add_header Content-Type text/plain;
+            }
+{% endif %}
+        }
+    }

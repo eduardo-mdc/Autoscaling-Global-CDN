@@ -86,3 +86,48 @@ output "gke_cluster_endpoints" {
   }
 }
 
+# Add these outputs to your main outputs.tf
+
+output "bastion_internal_ips" {
+  description = "Internal IP addresses of bastion hosts"
+  value = {
+    for region in var.regions :
+    region => module.bastion[region].bastion_internal_ip
+  }
+}
+
+output "bastion_ssh_via_admin" {
+  description = "SSH commands to connect to bastion hosts via admin VM"
+  value = {
+    for region in var.regions :
+    region => "ssh -J ${var.admin_username}@${module.admin.admin_public_ip} ${var.admin_username}@${module.bastion[region].bastion_internal_ip}"
+  }
+}
+
+output "domain_configuration" {
+  description = "Domain and SSL configuration"
+  value = {
+    domain_name           = module.loadbalancer.domain_name
+    nameservers          = module.loadbalancer.dns_zone_nameservers
+    ssl_certificate_name = module.loadbalancer.ssl_certificate_name
+    ssl_domains         = module.loadbalancer.ssl_certificate_domains
+  }
+}
+
+output "nameserver_instructions" {
+  description = "Instructions for configuring nameservers"
+  value       = module.loadbalancer.nameserver_configuration
+}
+
+output "deployment_urls" {
+  description = "URLs to access your deployment"
+  value       = module.loadbalancer.deployment_urls
+}
+
+output "kubectl_access_via_bastions" {
+  description = "Instructions for accessing GKE clusters via bastion hosts"
+  value = {
+    for region in var.regions :
+    region => "Connect via: ssh -J ${var.admin_username}@${module.admin.admin_public_ip} ${var.admin_username}@${module.bastion[region].bastion_internal_ip}"
+  }
+}

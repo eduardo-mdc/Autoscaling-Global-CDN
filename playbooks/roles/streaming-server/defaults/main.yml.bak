@@ -1,0 +1,208 @@
+---
+# Streaming Server Deployment Default Variables
+
+# Basic settings
+app_name: "streaming-server"
+app_namespace: "streaming"
+dockerhub_image: "youruser/streaming-server"
+dockerhub_tag: "latest"
+environment: "production"
+
+# Port configuration
+app_http_port: 80
+app_rtmp_port: 1935
+metrics_port: 9090
+expose_rtmp: true
+
+# Resource limits
+app_memory_request: "512Mi"
+app_cpu_request: "250m"
+app_memory_limit: "1Gi"
+app_cpu_limit: "500m"
+
+# Health check settings
+app_health_path: "/healthz"
+app_health_port: 80  # Same as app_http_port by default
+app_readiness_delay: 10
+app_liveness_delay: 15
+app_health_period: 5
+app_liveness_period: 15
+
+# Pod anti-affinity
+pod_anti_affinity_weight: 100
+
+# Metrics settings
+prometheus_scrape: "true"
+metric_prefix: "streaming"
+latency_threshold: 0.1
+metrics_window: "5m"
+metrics_scrape_interval: "10s"
+metrics_path: "/metrics"
+metrics_interval: "5s"
+metrics_endpoint: "/metrics"
+
+# Metric types
+latency_metric_type: "histogram"
+connections_metric_type: "counter"
+errors_metric_type: "counter"
+bandwidth_metric_type: "gauge"
+
+# Metric help text
+latency_metric_help: "Client connection latency in seconds"
+connections_metric_help: "Total number of client connections"
+errors_metric_help: "Total number of connection errors"
+bandwidth_metric_help: "Bandwidth usage in bytes"
+
+# Latency histogram buckets
+latency_buckets: "[0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10]"
+
+# Log sampling
+log_sampling_enabled: "true"
+log_sampling_rate: "0.1"
+
+# Service settings
+service_type: "NodePort"
+cloud_neg: '{"ingress": true}'
+
+# Monitoring settings
+monitoring_namespace: "monitoring"
+deploy_monitoring: true
+install_prometheus: true
+prometheus_operator_url: "https://github.com/prometheus-operator/prometheus-operator/releases/download/v0.59.1/bundle.yaml"
+prometheus_wait_seconds: 30
+ignore_prometheus_errors: false
+
+# Autoscaler settings
+autoscaler_namespace: "kube-system"
+autoscaler_name: "node-autoscaler"
+autoscaler_sa_name: "node-autoscaler"
+autoscaler_image: "k8s.gcr.io/autoscaling/cluster-autoscaler:v1.23.0"
+autoscaler_replicas: 1
+scan_interval: "10s"
+scale_down_delay: "2m"
+scale_down_unneeded: "2m"
+pods_priority_cutoff: "-10"
+verbosity_level: "4"
+cloud_provider: "gce"
+
+# Autoscaler resource limits
+autoscaler_cpu_limit: "100m"
+autoscaler_memory_limit: "300Mi"
+autoscaler_cpu_request: "100m"
+autoscaler_memory_request: "300Mi"
+
+# HPA settings
+metric_name: "custom.googleapis.com|streaming_client_latency_seconds"
+metric_target_type: "AverageValue"
+latency_target: "100m"
+hpa_min_replicas: 1
+hpa_max_replicas: 3
+enable_behavior: false
+
+# Scale up/down behavior (if enabled)
+scale_up_window: 60
+scale_up_percent: 100
+scale_up_period: 60
+scale_down_window: 300
+scale_down_percent: 10
+scale_down_period: 60
+
+# Volume paths
+cache_mount_path: "/var/cache/streaming"
+cache_host_path: "/var/cache/streaming"
+
+# Deployment options
+connect_to_clusters: true
+deploy_autoscaler: true
+wait_for_rollout: true
+rollout_timeout: 300
+verify_deployment: true
+
+# Configmap name
+configmap_name: "latency-exporter-config"
+
+# Ansible paths
+manifests_dir: "/opt/k8s-manifests/{{ app_name }}"
+kubeconfig_path: "/root/.kube/config"
+
+# Optional custom variables (examples)
+# These are commented out by default - uncomment and modify as needed
+
+# Custom environment variables
+# custom_env_vars:
+#   - name: STREAMING_BUFFER_SIZE
+#     value: "8192"
+#   - name: MAX_CONNECTIONS
+#     value: "10000"
+#   - name: LOG_LEVEL
+#     value: "info"
+
+# Extra service annotations
+# extra_annotations:
+#   app.kubernetes.io/part-of: "streaming-platform"
+#   app.kubernetes.io/version: "v1.0.0"
+
+# Extra service ports
+# extra_ports:
+#   - port: 8081
+#     targetPort: 8081
+#     name: admin
+#   - port: 443
+#     targetPort: 443
+#     name: https
+
+# Extra volumes
+# extra_volumes:
+#   - name: config-volume
+#     type: configMap
+#     configMapName: streaming-config
+#   - name: secrets-volume
+#     type: secret
+#     secretName: streaming-secrets
+
+# Extra volume mounts
+# extra_volume_mounts:
+#   - name: config-volume
+#     path: /etc/streaming/config
+#   - name: secrets-volume
+#     path: /etc/streaming/secrets
+
+# Extra Prometheus metrics
+# extra_metrics:
+#   - name: streaming_cache_size_bytes
+#     help: "Size of streaming cache in bytes"
+#     type: gauge
+#   - name: streaming_request_duration_seconds
+#     help: "Request duration in seconds"
+#     type: histogram
+#     buckets: "[0.01, 0.05, 0.1, 0.5, 1.0, 2.0, 5.0]"
+
+# Extra Prometheus rules
+# extra_rules:
+#   - name: streaming_high_latency_warning
+#     expr: streaming_client_latency_seconds > 0.2
+#     labels:
+#       severity: warning
+
+# Extra autoscaler args
+# extra_autoscaler_args:
+#   - "--max-nodes-total=100"
+#   - "--cores-total=1000:2000:500"
+#   - "--memory-total=1000:2000:500"
+
+# Extra autoscaler env vars
+# extra_autoscaler_env:
+#   - name: EXTRA_SETTING
+#     value: "custom-value"
+
+# Extra monitor labels
+# extra_monitor_labels:
+#   tier: "backend"
+#   priority: "high"
+
+# Extra config sections
+# extra_config_sections:
+#   - name: "Advanced Settings"
+#     values:
+#       max_buffer_size: 16384
+#       connection_timeout: 60s

@@ -26,7 +26,64 @@ resource "google_compute_subnetwork" "subnet" {
   }
 }
 
-# Create firewall rule to block inter-region traffic
+# Allow internet egress for HTTPS/HTTP (kubectl, APIs)
+resource "google_compute_firewall" "allow_internet_egress" {
+  name    = "${var.project_name}-allow-internet-egress-${var.region}"
+  network = google_compute_network.vpc.name
+
+  allow {
+    protocol = "tcp"
+    ports    = ["443", "80"]  # HTTPS and HTTP
+  }
+
+  direction = "EGRESS"
+  destination_ranges = ["0.0.0.0/0"]
+  priority = 1000
+}
+
+# Allow egress to admin VPC (return traffic to admin VM)
+resource "google_compute_firewall" "allow_egress_to_admin" {
+  name    = "${var.project_name}-allow-egress-to-admin-${var.region}"
+  network = google_compute_network.vpc.name
+
+  allow {
+    protocol = "tcp"
+  }
+
+  direction = "EGRESS"
+  destination_ranges = [var.admin_cidr]
+  priority = 1000
+}
+
+# Allow internal traffic within region
+resource "google_compute_firewall" "allow_internal" {
+  name    = "${var.project_name}-allow-internal-${var.region}"
+  network = google_compute_network.vpc.name
+
+  allow {
+    protocol = "all"
+  }
+
+  # Allow traffic within the subnet
+  source_ranges = [google_compute_subnetwork.subnet.ip_cidr_range]
+  priority = 1000
+}
+
+# Allow traffic from admin VM
+resource "google_compute_firewall" "allow_from_admin" {
+  name    = "${var.project_name}-allow-from-admin-${var.region}"
+  network = google_compute_network.vpc.name
+
+  allow {
+    protocol = "all"
+  }
+
+  # Admin VM CIDR range
+  source_ranges = [var.admin_cidr]
+  priority = 1000
+}
+
+# Block inter-region traffic (maintain isolation)
 resource "google_compute_firewall" "block_inter_region" {
   name    = "${var.project_name}-block-inter-region-${var.region}"
   network = google_compute_network.vpc.name
@@ -42,40 +99,8 @@ resource "google_compute_firewall" "block_inter_region" {
   # Target is this region's subnet
   destination_ranges = [google_compute_subnetwork.subnet.ip_cidr_range]
 
-  # Lower priority than the admin allow rule (which will be 1000)
+  # Lower priority than the admin allow rule
   priority = 2000
-}
-
-# Create firewall rule to allow internal traffic within region
-resource "google_compute_firewall" "allow_internal" {
-  name    = "${var.project_name}-allow-internal-${var.region}"
-  network = google_compute_network.vpc.name
-
-  allow {
-    protocol = "all"
-  }
-
-  # Allow traffic within the subnet
-  source_ranges = [google_compute_subnetwork.subnet.ip_cidr_range]
-
-  # Higher priority than the block rule
-  priority = 1000
-}
-
-# Create firewall rule to allow traffic from admin VM
-resource "google_compute_firewall" "allow_from_admin" {
-  name    = "${var.project_name}-allow-from-admin-${var.region}"
-  network = google_compute_network.vpc.name
-
-  allow {
-    protocol = "all"
-  }
-
-  # Admin VM CIDR range
-  source_ranges = [var.admin_cidr]
-
-  # Higher priority than the block rule
-  priority = 1000
 }
 
 # NAT gateway for outbound internet access from private instances

@@ -51,3 +51,16 @@ variable "all_regions" {
   description = "List of all regions where GKE clusters are deployed"
   type        = list(string)
 }
+
+variable "master_cidrs" {
+  description = "List of GKE master CIDR blocks from all regions"
+  type        = list(string)
+  default     = []
+}
+
+# Alternative: Pass region numbers and calculate dynamically
+variable "region_numbers" {
+  description = "Map of regions to their numeric identifiers"
+  type        = map(number)
+  default     = {}
+}

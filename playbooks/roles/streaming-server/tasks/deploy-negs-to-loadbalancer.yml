@@ -1,0 +1,162 @@
+# playbooks/roles/streaming-server/tasks/deploy-negs-to-loadbalancer.yml
+---
+# Connect local GKE NEGs to Terraform Global Load Balancer
+# This replaces deploy-ingress.yml
+
+- name: Get current region for context
+  shell: "hostname | grep -o 'bastion-[^-]*' | cut -d'-' -f2 || echo 'unknown'"
+  register: current_region
+
+- name: Display current region
+  debug:
+    msg: "🌐 Connecting NEGs to Global Load Balancer from region: {{ current_region.stdout }}"
+
+- name: Wait for NEGs to be created by service
+  pause:
+    seconds: 30
+    prompt: "Waiting for NEGs to be created by streaming service in {{ current_region.stdout }}..."
+
+- name: Get streaming NEGs in current region
+  shell: |
+    gcloud compute network-endpoint-groups list \
+      --filter="name~k8s1.*streaming.*{{ app_name }}" \
+      --zones="{{ current_region.stdout }}-a,{{ current_region.stdout }}-b,{{ current_region.stdout }}-c" \
+      --format="value(name)"
+  register: local_neg_names
+  changed_when: false
+
+- name: Parse local NEG names
+  set_fact:
+    region_negs: "{{ local_neg_names.stdout_lines | select('match', '.*') | list }}"
+
+- name: Display found NEGs in region
+  debug:
+    msg: |
+      Found {{ region_negs | length }} NEGs in {{ current_region.stdout }}:
+      {% for neg in region_negs %}
+      - {{ neg }}
+      {% endfor %}
+
+- name: Fail if no NEGs found in region
+  fail:
+    msg: "No streaming NEGs found in region {{ current_region.stdout }}. Service may not be ready."
+  when: region_negs | length == 0
+
+- name: Get NEG details for each local NEG
+  shell: |
+    gcloud compute network-endpoint-groups describe {{ item }} \
+      --format="value(zone)" | cut -d'/' -f9
+  register: local_neg_zones
+  loop: "{{ region_negs }}"
+  changed_when: false
+
+- name: Create regional NEG info list
+  set_fact:
+    regional_neg_info: |
+      {% set neg_list = [] %}
+      {% for i in range(region_negs | length) %}
+      {% set _ = neg_list.append({
+        'name': region_negs[i],
+        'zone': local_neg_zones.results[i].stdout.strip(),
+        'region': current_region.stdout
+      }) %}
+      {% endfor %}
+      {{ neg_list }}
+
+- name: Display regional NEG information
+  debug:
+    msg: |
+      🔗 NEG Information for {{ current_region.stdout }}:
+      {% for neg in regional_neg_info %}
+      - Name: {{ neg.name }}
+        Zone: {{ neg.zone }}
+        Region: {{ neg.region }}
+      {% endfor %}
+
+- name: Check if NEGs are already in backend service
+  shell: |
+    gcloud compute backend-services describe {{ project_name }}-backend-service \
+      --global --format="value(backends[].group)" | grep -c "{{ item.name }}" || echo "0"
+  register: neg_already_added
+  loop: "{{ regional_neg_info }}"
+  changed_when: false
+  ignore_errors: yes
+
+- name: Add NEGs to global backend service
+  shell: |
+    gcloud compute backend-services add-backend {{ project_name }}-backend-service \
+      --network-endpoint-group={{ item.0.name }} \
+      --network-endpoint-group-zone={{ item.0.zone }} \
+      --balancing-mode=RATE \
+      --max-rate=100 \
+      --global
+  register: add_neg_result
+  loop: "{{ regional_neg_info | zip(neg_already_added.results) | list }}"
+  when: item.1.stdout == "0"  # Only add if not already present
+  ignore_errors: yes
+
+- name: Display NEG addition results
+  debug:
+    msg: |
+      🔄 NEG Addition Results for {{ current_region.stdout }}:
+      {% for result in add_neg_result.results | default([]) %}
+      {% if result is not skipped %}
+      - NEG: {{ result.item.0.name }}
+        Status: {{ 'Success' if result.rc == 0 else 'Failed' }}
+        {% if result.rc != 0 %}
+        Error: {{ result.stderr | default('Unknown error') }}
+        {% endif %}
+      {% endif %}
+      {% endfor %}
+      
+      {% set skipped_count = add_neg_result.results | default([]) | selectattr('skipped', 'defined') | list | length %}
+      {% if skipped_count > 0 %}
+      - Skipped: {{ skipped_count }} NEGs (already in backend service)
+      {% endif %}
+
+- name: Wait for backend service to propagate changes
+  pause:
+    seconds: 15
+    prompt: "Waiting for backend service changes to propagate..."
+
+- name: Verify regional NEGs in backend service
+  shell: |
+    gcloud compute backend-services describe {{ project_name }}-backend-service \
+      --global --format="value(backends[].group)" | grep -c "{{ current_region.stdout }}" || echo "0"
+  register: regional_backend_count
+  changed_when: false
+
+- name: Test load balancer from region
+  uri:
+    url: "http://{{ load_balancer_ip }}/health"
+    method: GET
+    headers:
+      Host: "{{ domain_name }}"
+    timeout: 10
+  register: regional_lb_test
+  ignore_errors: yes
+
+- name: Display regional integration status
+  debug:
+    msg: |
+      ✅ Regional Integration Complete for {{ current_region.stdout }}
+      
+      📊 Summary:
+      - NEGs found: {{ region_negs | length }}
+      - NEGs in backend: {{ regional_backend_count.stdout }}
+      - Load balancer test: {{ 'Success' if regional_lb_test.status == 200 else 'Failed' }}
+      
+      🧪 Regional Test Result:
+      - URL: http://{{ load_balancer_ip }}/health
+      - Host: {{ domain_name }}
+      - Status: {{ regional_lb_test.status | default('Failed') }}
+      - Response: {{ regional_lb_test.content | default('No response') | truncate(100) }}
+
+- name: Display troubleshooting info if test failed
+  debug:
+    msg: |
+      🔧 Troubleshooting for {{ current_region.stdout }}:
+      - Check NEG health: gcloud compute network-endpoint-groups list-network-endpoints {{ region_negs[0] | default('NEG_NAME') }} --zone={{ current_region.stdout }}-a
+      - Check backend health: gcloud compute backend-services get-health {{ project_name }}-backend-service --global
+      - Check pod status: kubectl -n {{ app_namespace }} get pods -l app={{ app_name }}
+  when: regional_lb_test.status | default(0) != 200

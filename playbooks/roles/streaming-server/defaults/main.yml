@@ -1,28 +1,29 @@
 ---
-# Streaming Server Deployment Default Variables
+# Updated Streaming Server Deployment Default Variables for HLS/HTTPS
+# File: playbooks/roles/streaming-server/defaults/main.yml
 
 # Basic settings
 app_name: "streaming-server"
 app_namespace: "streaming"
-dockerhub_image: "youruser/streaming-server"
-dockerhub_tag: "latest"
-environment: "production"
+docker_hub_image: "nginx"  # Using nginx as base for HLS streaming
+docker_hub_tag: "alpine"
+deployment_environment: "production"  # Changed from 'environment' to avoid Ansible conflicts
 
-# Port configuration
+# Port configuration (updated for HLS/HTTPS)
 app_http_port: 80
-app_rtmp_port: 1935
+app_https_port: 443
 metrics_port: 9090
-expose_rtmp: true
+expose_rtmp: false  # Disabled RTMP, using HLS instead
 
 # Resource limits
-app_memory_request: "512Mi"
-app_cpu_request: "250m"
-app_memory_limit: "1Gi"
-app_cpu_limit: "500m"
+app_memory_request: "32Mi"           # Was: "256Mi"
+app_cpu_request: "10m"               # Was: "100m"
+app_memory_limit: "64Mi"             # Was: "512Mi"
+app_cpu_limit: "50m"                 # Was: "500m"
 
 # Health check settings
-app_health_path: "/healthz"
-app_health_port: 80  # Same as app_http_port by default
+app_health_path: "/health"
+app_health_port: 80  # HTTP health checks
 app_readiness_delay: 10
 app_liveness_delay: 15
 app_health_period: 5
@@ -33,7 +34,7 @@ pod_anti_affinity_weight: 100
 
 # Metrics settings
 prometheus_scrape: "true"
-metric_prefix: "streaming"
+metric_prefix: "hls_streaming"
 latency_threshold: 0.1
 metrics_window: "5m"
 metrics_scrape_interval: "10s"
@@ -41,168 +42,77 @@ metrics_path: "/metrics"
 metrics_interval: "5s"
 metrics_endpoint: "/metrics"
 
-# Metric types
-latency_metric_type: "histogram"
-connections_metric_type: "counter"
-errors_metric_type: "counter"
-bandwidth_metric_type: "gauge"
-
-# Metric help text
-latency_metric_help: "Client connection latency in seconds"
-connections_metric_help: "Total number of client connections"
-errors_metric_help: "Total number of connection errors"
-bandwidth_metric_help: "Bandwidth usage in bytes"
-
-# Latency histogram buckets
-latency_buckets: "[0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10]"
-
-# Log sampling
-log_sampling_enabled: "true"
-log_sampling_rate: "0.1"
-
 # Service settings
 service_type: "NodePort"
 cloud_neg: '{"ingress": true}'
 
-# Monitoring settings
+# SSL/TLS settings (self-signed for testing)
+ssl_enabled: false
+ssl_cert_type: "self_signed"  # Options: self_signed, cert_manager, manual
+
+# HLS streaming settings
+hls_enabled: true
+hls_segment_time: 10  # seconds
+hls_list_size: 6      # number of segments in playlist
+hls_fragment_time: 2  # fragment duration
+
+# Cache settings for HLS
+cache_mount_path: "/var/cache/nginx/hls"
+cache_host_path: "/var/cache/nginx/hls"
+nginx_temp_path: "/var/cache/nginx/temp"
+
+# Monitoring settings (simplified for testing)
 monitoring_namespace: "monitoring"
-deploy_monitoring: true
-install_prometheus: true
-prometheus_operator_url: "https://github.com/prometheus-operator/prometheus-operator/releases/download/v0.59.1/bundle.yaml"
-prometheus_wait_seconds: 30
-ignore_prometheus_errors: false
+deploy_monitoring: false  # Disabled for initial testing
+install_prometheus: false
+deploy_ingress: false     # Disabled for initial testing
 
-# Autoscaler settings
+# Autoscaler settings (disabled for testing)
+deploy_autoscaler: false
 autoscaler_namespace: "kube-system"
-autoscaler_name: "node-autoscaler"
-autoscaler_sa_name: "node-autoscaler"
-autoscaler_image: "k8s.gcr.io/autoscaling/cluster-autoscaler:v1.23.0"
-autoscaler_replicas: 1
-scan_interval: "10s"
-scale_down_delay: "2m"
-scale_down_unneeded: "2m"
-pods_priority_cutoff: "-10"
-verbosity_level: "4"
-cloud_provider: "gce"
-
-# Autoscaler resource limits
-autoscaler_cpu_limit: "100m"
-autoscaler_memory_limit: "300Mi"
-autoscaler_cpu_request: "100m"
-autoscaler_memory_request: "300Mi"
-
-# HPA settings
-metric_name: "custom.googleapis.com|streaming_client_latency_seconds"
-metric_target_type: "AverageValue"
-latency_target: "100m"
-hpa_min_replicas: 1
-hpa_max_replicas: 3
-enable_behavior: false
-
-# Scale up/down behavior (if enabled)
-scale_up_window: 60
-scale_up_percent: 100
-scale_up_period: 60
-scale_down_window: 300
-scale_down_percent: 10
-scale_down_period: 60
-
-# Volume paths
-cache_mount_path: "/var/cache/streaming"
-cache_host_path: "/var/cache/streaming"
 
 # Deployment options
 connect_to_clusters: true
-deploy_autoscaler: true
 wait_for_rollout: true
 rollout_timeout: 300
 verify_deployment: true
-
-# Configmap name
-configmap_name: "latency-exporter-config"
 
 # Ansible paths
 manifests_dir: "/opt/k8s-manifests/{{ app_name }}"
 kubeconfig_path: "/root/.kube/config"
 
-# Optional custom variables (examples)
-# These are commented out by default - uncomment and modify as needed
+# Nginx specific settings
+nginx_worker_processes: "auto"
+nginx_worker_connections: 1024
+nginx_client_max_body_size: "100M"
+nginx_keepalive_timeout: 65
 
-# Custom environment variables
-# custom_env_vars:
-#   - name: STREAMING_BUFFER_SIZE
-#     value: "8192"
-#   - name: MAX_CONNECTIONS
-#     value: "10000"
-#   - name: LOG_LEVEL
-#     value: "info"
+# CORS settings for HLS
+cors_enabled: true
+cors_origins: "*"  # Allow all origins for testing
+cors_methods: "GET, POST, OPTIONS"
+cors_headers: "DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range"
 
-# Extra service annotations
-# extra_annotations:
-#   app.kubernetes.io/part-of: "streaming-platform"
-#   app.kubernetes.io/version: "v1.0.0"
+# Rate limiting
+rate_limit_enabled: true
+rate_limit_zone: "hls:10m"
+rate_limit_rate: "10r/s"
+rate_limit_burst: 20
 
-# Extra service ports
-# extra_ports:
-#   - port: 8081
-#     targetPort: 8081
-#     name: admin
-#   - port: 443
-#     targetPort: 443
-#     name: https
+# Security headers
+security_headers_enabled: true
+ssl_protocols: "TLSv1.2 TLSv1.3"
+ssl_ciphers: "ECDHE-RSA-AES256-GCM-SHA512:DHE-RSA-AES256-GCM-SHA512:ECDHE-RSA-AES256-GCM-SHA384:DHE-RSA-AES256-GCM-SHA384"
 
-# Extra volumes
-# extra_volumes:
-#   - name: config-volume
-#     type: configMap
-#     configMapName: streaming-config
-#   - name: secrets-volume
-#     type: secret
-#     secretName: streaming-secrets
+# Custom environment variables for containers
+custom_env_vars:
+  - name: STREAMING_TYPE
+    value: "hls"
+  - name: NGINX_ENTRYPOINT_QUIET_LOGS
+    value: "1"
 
-# Extra volume mounts
-# extra_volume_mounts:
-#   - name: config-volume
-#     path: /etc/streaming/config
-#   - name: secrets-volume
-#     path: /etc/streaming/secrets
-
-# Extra Prometheus metrics
-# extra_metrics:
-#   - name: streaming_cache_size_bytes
-#     help: "Size of streaming cache in bytes"
-#     type: gauge
-#   - name: streaming_request_duration_seconds
-#     help: "Request duration in seconds"
-#     type: histogram
-#     buckets: "[0.01, 0.05, 0.1, 0.5, 1.0, 2.0, 5.0]"
-
-# Extra Prometheus rules
-# extra_rules:
-#   - name: streaming_high_latency_warning
-#     expr: streaming_client_latency_seconds > 0.2
-#     labels:
-#       severity: warning
-
-# Extra autoscaler args
-# extra_autoscaler_args:
-#   - "--max-nodes-total=100"
-#   - "--cores-total=1000:2000:500"
-#   - "--memory-total=1000:2000:500"
-
-# Extra autoscaler env vars
-# extra_autoscaler_env:
-#   - name: EXTRA_SETTING
-#     value: "custom-value"
-
-# Extra monitor labels
-# extra_monitor_labels:
-#   tier: "backend"
-#   priority: "high"
-
-# Extra config sections
-# extra_config_sections:
-#   - name: "Advanced Settings"
-#     values:
-#       max_buffer_size: 16384
-#       connection_timeout: 60s
+# Extra service annotations for GCP integration
+extra_annotations:
+  app.kubernetes.io/part-of: "streaming-platform"
+  app.kubernetes.io/version: "v1.0.0"
+  streaming.platform/type: "hls"

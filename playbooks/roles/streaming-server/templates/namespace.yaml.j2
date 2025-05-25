@@ -3,16 +3,18 @@ kind: Namespace
 metadata:
   name: {{ app_namespace }}
   labels:
-    app: {{ app_name }}
-    environment: {{ environment | default('production') }}
-{% if namespace_labels is defined %}
+    app: "{{ app_name }}"
+    environment: "{{ deployment_environment | default('production') }}"
+    streaming-type: "hls"
+    created-by: "ansible"
+{% if namespace_labels is defined and namespace_labels %}
 {% for key, value in namespace_labels.items() %}
-    {{ key }}: "{{ value }}"
+    {{ key }}: "{{ value | string }}"
 {% endfor %}
 {% endif %}
-{% if namespace_annotations is defined %}
+{% if namespace_annotations is defined and namespace_annotations %}
   annotations:
 {% for key, value in namespace_annotations.items() %}
-    {{ key }}: "{{ value }}"
+    {{ key }}: "{{ value | string }}"
 {% endfor %}
 {% endif %}

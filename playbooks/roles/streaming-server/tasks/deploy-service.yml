@@ -1,0 +1,106 @@
+---
+# Deploy Service for HLS streaming
+# File: playbooks/roles/streaming-server/tasks/deploy-service.yml
+
+- name: Generate HLS streaming service manifest
+  template:
+    src: hls-streaming-service.yaml.j2
+    dest: "{{ manifests_dir }}/hls-streaming-service.yaml"
+
+- name: Debug generated service manifest (first 15 lines)
+  shell: "head -15 {{ manifests_dir }}/hls-streaming-service.yaml"
+  register: service_manifest_preview
+
+- name: Show service manifest preview
+  debug:
+    msg: |
+      Generated Service manifest preview:
+      {{ service_manifest_preview.stdout_lines | join('\n') }}
+
+- name: Apply streaming service
+  k8s:
+    state: present
+    src: "{{ manifests_dir }}/hls-streaming-service.yaml"
+    wait: true
+    wait_timeout: 60
+
+- name: Sleep to allow service endpoints to populate
+  pause:
+    seconds: 10
+
+- name: Get service status
+  k8s_info:
+    api_version: v1
+    kind: Service
+    name: "{{ app_name }}"
+    namespace: "{{ app_namespace }}"
+  register: service_status
+
+- name: Display service status
+  debug:
+    msg: |
+      🌐 Service {{ app_name }} status:
+      - Type: {{ service_status.resources[0].spec.type }}
+      - Ports: {{ service_status.resources[0].spec.ports | length }}
+      - Cluster IP: {{ service_status.resources[0].spec.clusterIP | default('Pending') }}
+      {% if service_status.resources[0].spec.type == 'NodePort' %}
+      - Node Ports:
+      {% for port in service_status.resources[0].spec.ports %}
+        - {{ port.name }}: {{ port.nodePort | default('N/A') }}
+      {% endfor %}
+      {% endif %}
+
+- name: Get service endpoints
+  k8s_info:
+    api_version: v1
+    kind: Endpoints
+    name: "{{ app_name }}"
+    namespace: "{{ app_namespace }}"
+  register: endpoints_status
+
+- name: Display endpoints status
+  debug:
+    msg: |
+      🎯 Service endpoints for {{ app_name }}:
+      - Endpoint subsets: {{ endpoints_status.resources[0].subsets | default([]) | length }}
+      {% if endpoints_status.resources[0].subsets is defined and endpoints_status.resources[0].subsets | length > 0 %}
+      - Ready endpoints:
+      {% for subset in endpoints_status.resources[0].subsets %}
+        {% for address in subset.addresses | default([]) %}
+        - {{ address.ip }}:{{ subset.ports[0].port }} ({{ address.targetRef.name | default('unknown') }})
+        {% endfor %}
+      {% endfor %}
+      {% else %}
+      - ⚠️ No ready endpoints found - pods may not be ready yet
+      {% endif %}
+
+- name: Test service connectivity (basic check)
+  shell: |
+    kubectl -n {{ app_namespace }} get svc {{ app_name }} -o jsonpath='{.spec.clusterIP}'
+  register: cluster_ip
+
+- name: Display service connectivity info
+  debug:
+    msg: |
+      🔗 Service connectivity:
+      - Cluster IP: {{ cluster_ip.stdout }}
+      - Internal URL: http://{{ cluster_ip.stdout }}:{{ app_http_port | default('80') }}
+      - Health check: http://{{ cluster_ip.stdout }}:{{ app_http_port | default('80') }}/health
+      
+      🧪 Test from inside cluster:
+      kubectl -n {{ app_namespace }} run test-pod --rm -i --tty --image=curlimages/curl -- curl http://{{ app_name }}.{{ app_namespace }}.svc.cluster.local/health
+
+- name: Verify service deployment success
+  debug:
+    msg: |
+      ✅ Service {{ app_name }} has been deployed successfully.
+      
+      📊 Summary:
+      - Service type: {{ service_status.resources[0].spec.type }}
+      - Ports configured: {{ service_status.resources[0].spec.ports | length }}
+      - Endpoints ready: {{ endpoints_status.resources[0].subsets | default([]) | length > 0 }}
+      
+      🔧 If service has no endpoints, check:
+      - Pod readiness: kubectl -n {{ app_namespace }} get pods -l app={{ app_name }}
+      - Pod logs: kubectl -n {{ app_namespace }} logs -l app={{ app_name }}
+      - Service selector: kubectl -n {{ app_namespace }} describe svc {{ app_name }}

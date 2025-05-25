@@ -1,0 +1,64 @@
+---
+# Deploy namespace to current bastion's region
+# File: playbooks/roles/streaming-server/tasks/deploy-namespace.yml
+
+- name: Verify cluster connection
+  shell: "kubectl cluster-info --request-timeout=10s"
+  register: cluster_info
+  failed_when: cluster_info.rc != 0
+
+- name: Display current cluster context
+  debug:
+    msg: "Deploying to cluster: {{ cluster_info.stdout_lines[0] }}"
+
+- name: Create manifests directory
+  file:
+    path: "{{ manifests_dir }}"
+    state: directory
+    mode: '0755'
+
+- name: Generate namespace manifest
+  template:
+    src: namespace.yaml.j2
+    dest: "{{ manifests_dir }}/namespace.yaml"
+
+- name: Debug namespace manifest content
+  debug:
+    msg: "Generated namespace manifest at {{ manifests_dir }}/namespace.yaml"
+
+- name: Display namespace manifest content for debugging
+  shell: "cat {{ manifests_dir }}/namespace.yaml"
+  register: namespace_content
+
+- name: Show namespace manifest
+  debug:
+    var: namespace_content.stdout_lines
+
+- name: Validate namespace manifest with kubectl dry-run
+  shell: "kubectl apply --dry-run=client -f {{ manifests_dir }}/namespace.yaml"
+  register: namespace_validation
+
+- name: Apply namespace manifest
+  block:
+    - name: Apply namespace using k8s module
+      k8s:
+        state: present
+        src: "{{ manifests_dir }}/namespace.yaml"
+        wait: true
+        wait_timeout: 60
+  rescue:
+    - name: Fallback - Apply namespace using kubectl
+      shell: "kubectl apply -f {{ manifests_dir }}/namespace.yaml"
+      register: kubectl_apply_result
+
+    - name: Display kubectl apply result
+      debug:
+        var: kubectl_apply_result.stdout_lines
+
+- name: Verify namespace creation
+  shell: "kubectl get namespace {{ app_namespace }} -o wide"
+  register: namespace_status
+
+- name: Display namespace status
+  debug:
+    var: namespace_status.stdout_lines

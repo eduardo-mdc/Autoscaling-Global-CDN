@@ -1,15 +1,46 @@
 #!/bin/bash
+
+# Enable GKE auth plugin
+export USE_GKE_GCLOUD_AUTH_PLUGIN=True
+
 if [ $# -ne 1 ]; then
-echo "Usage: $0 <region>"
+    echo "Usage: $0 <region>"
     echo "Available regions: {{ regions | join(' ') }}"
     exit 1
-    fi
+fi
 
-    REGION=$1
-    CLUSTER_NAME="{{ project_name }}-gke-$REGION"
+REGION=$1
+CLUSTER_NAME="{{ project_name }}-gke-$REGION"
 
-    echo "Connecting to cluster $CLUSTER_NAME in region $REGION..."
-    gcloud container clusters get-credentials $CLUSTER_NAME --region $REGION --project {{ project_id }}
+# Validate region
+case $REGION in
+{% for region in regions %}
+    {{ region }})
+        ;;
+{% endfor %}
+    *)
+        echo "Error: Invalid region '$REGION'"
+        echo "Available regions: {{ regions | join(' ') }}"
+        exit 1
+        ;;
+esac
 
+echo "Connecting to cluster $CLUSTER_NAME in region $REGION..."
+
+# Check if cluster exists first
+if ! gcloud container clusters describe $CLUSTER_NAME --region $REGION --project {{ project_id }} >/dev/null 2>&1; then
+    echo "Error: Cluster $CLUSTER_NAME not found in region $REGION"
+    exit 1
+fi
+
+# Get credentials
+if gcloud container clusters get-credentials $CLUSTER_NAME --region $REGION --project {{ project_id }}; then
     echo "Successfully connected to $CLUSTER_NAME"
-    kubectl config current-context
+    echo "Current context: $(kubectl config current-context)"
+    echo ""
+    echo "Cluster info:"
+    kubectl cluster-info --request-timeout=10s
+else
+    echo "Failed to connect to cluster $CLUSTER_NAME"
+    exit 1
+fi
