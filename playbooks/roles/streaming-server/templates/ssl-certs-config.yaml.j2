@@ -1,0 +1,97 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ app_name }}-ssl-certs
+  namespace: {{ app_namespace }}
+  labels:
+    app: {{ app_name }}
+    config-type: ssl-certs
+    ssl-type: {{ ssl_cert_type | default('self_signed') }}
+{% if extra_ssl_labels is defined %}
+{% for key, value in extra_ssl_labels.items() %}
+    {{ key }}: "{{ value }}"
+{% endfor %}
+{% endif %}
+data:
+{% if ssl_cert_type == 'manual' and ssl_manual_cert is defined and ssl_manual_key is defined %}
+  # Manual SSL certificates provided
+  tls.crt: |
+{{ ssl_manual_cert | indent(4, true) }}
+  tls.key: |
+{{ ssl_manual_key | indent(4, true) }}
+{% elif ssl_cert_type == 'file' and ssl_cert_path is defined and ssl_key_path is defined %}
+  # SSL certificates from files
+  tls.crt: |
+{{ lookup('file', ssl_cert_path) | indent(4, true) }}
+  tls.key: |
+{{ lookup('file', ssl_key_path) | indent(4, true) }}
+{% else %}
+  # Self-signed certificate for testing (default)
+  # NOTE: This is for testing only - use proper certificates in production
+  tls.crt: |
+    ------BEGIN CERTIFICATE-----
+    MIIDpTCCAo2gAwIBAgIUEnbEuiVahkMJ+DmxcA57BEdmT/4wDQYJKoZIhvcNAQEL
+    BQAwYjELMAkGA1UEBhMCVVMxDTALBgNVBAgMBFRlc3QxDTALBgNVBAcMBFRlc3Qx
+    FjAUBgNVBAoMDUhMUy1TdHJlYW1pbmcxHTAbBgNVBAMMFGhscy1zdHJlYW1pbmct
+    c2VydmVyMB4XDTI1MDUyNTAwNTgyMFoXDTI2MDUyNTAwNTgyMFowYjELMAkGA1UE
+    BhMCVVMxDTALBgNVBAgMBFRlc3QxDTALBgNVBAcMBFRlc3QxFjAUBgNVBAoMDUhM
+    Uy1TdHJlYW1pbmcxHTAbBgNVBAMMFGhscy1zdHJlYW1pbmctc2VydmVyMIIBIjAN
+    BgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAiQle1djloWPHrT1M93y/tKjltybf
+    /3FkzEiLHx6Ue/N7kIMb2s+vrXRk8eqq2VnwczWs00jYf2k8TwAfvetW+p2kEv0s
+    z57jKYqIre64EeJAAfniGRUp2F5Mcheo/qzPZ9M5DQtIPDVJsDWffKjtbO9aC9q6
+    2YkxvhbQBPS+IO9/8nc6fkNjR1pvVFvKie6tGDZS9b+NSvnVOM7cGOVvQaOpCpbV
+    gbayhYr5ncPCyuSzmX/FSxlM7aBWcv6df22A3FKlGNpWTgy4CPonjba0VqjXD4En
+    4cfhZLSEPQdKCAZZqkG1GS3qtrOKegZbnzG/pJLBdTxsddKrqXUXFUA/3wIDAQAB
+    o1MwUTAdBgNVHQ4EFgQUlidqvlgJUs6G3GUjWMhiXJiQd9YwHwYDVR0jBBgwFoAU
+    lidqvlgJUs6G3GUjWMhiXJiQd9YwDwYDVR0TAQH/BAUwAwEB/zANBgkqhkiG9w0B
+    AQsFAAOCAQEAHCLK7o0R+ha6GIstaz0AOMLyU42G+aCyE4pTHbreljaQi0GCYX9K
+    Klm3IBNPkVh9RJ7YGEvOTwEdJfdtj+tcKul48VoDOFAooEIc3XnMTodScjr+O60s
+    yb4PLF0pMvwYJjECSqEx+ejuucnNUHUjPly7RrbuEqMYmR7LcmGryAlnVRABys8X
+    kR6zs22Jmj8QFADdJJkUPaGE7ROTm2XJolkTbPfnUUjHQLEiyp2LVw21HGFJqsdi
+    L2Bae+japvmEy6/IGIA2w90j2DYkNLO7oRcclMpymdB54gNNoCwhdXY7hOhuaFpe
+    OAMnVDA1+/MgCUjLm+yc5yrA/cjqThV7Uw==
+    -----END CERTIFICATE-----
+
+
+tls.key: |
+    -----BEGIN PRIVATE KEY-----
+    MIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQCJCV7V2OWhY8et
+    PUz3fL+0qOW3Jt//cWTMSIsfHpR783uQgxvaz6+tdGTx6qrZWfBzNazTSNh/aTxP
+    AB+961b6naQS/SzPnuMpioit7rgR4kAB+eIZFSnYXkxyF6j+rM9n0zkNC0g8NUmw
+    NZ98qO1s71oL2rrZiTG+FtAE9L4g73/ydzp+Q2NHWm9UW8qJ7q0YNlL1v41K+dU4
+    ztwY5W9Bo6kKltWBtrKFivmdw8LK5LOZf8VLGUztoFZy/p1/bYDcUqUY2lZODLgI
+    +ieNtrRWqNcPgSfhx+FktIQ9B0oIBlmqQbUZLeq2s4p6BlufMb+kksF1PGx10qup
+    dRcVQD/fAgMBAAECggEAPS6d1MQ94cx2vfX8gxKDVNmDlj4ZDCdIZZyN4Jr6mEyh
+    AmhG626GdN7eotOu69On8wgn3T1My7XkYzEe+uAzuTjgpEm81AWQTl+3nlBShkmJ
+    Ylh6hdBZGm0fnGDL5sio4SYA9r3uxlLUT4PhbPrO5jAG9/v0KGOEfeYZgdzzdihQ
+    q7Mve06CtDZrCGLj8SMFHzLKjv/DbCaajlBKLD3ARvLEVQ1IR+nTAIyYNLc1qtiy
+    MASSY5J6URSAunAZuAciZUM9wIf5enOCzUgJpzVG6tHsTFNLIYDd7x9KyYdV84Cb
+    sNiCOSR75+eBxlZc4NzOE/h87rG/Mtq+ZrDP2otqIQKBgQC7+8DbSQnoQ4sQZW/g
+    qw4gof3O6IzEnPPQLUBfTEaiWhUkTZtNh0M/Rv3Auk4cfpyvLxjiXYXegYxn9X85
+    GMX9os4kad1Sijd1qdLy0DeDZXXmdYxWaY6FB4s8gmX/2VDiF92Z+rVKFLezVR5d
+    wtYWDDCE0XdCXLy0rTM7hCgCvQKBgQC6nped+FAkBkj0n8cGN7UiFniLUK+8Sq98
+    Bob1f3QZnGR1ezW4BKbMtbfySfg8alKctupQAtijV0PlZn9kDMaRf/OOMbhwVpCn
+    rgusS46tEv+SlLXdOLSNvoLR2nVWr7gHZSOCqNLxyVM2UZh8fDUs7j4ut96pD3Ha
+    1ehrTamkywKBgHSDOamwv39CPfNPq+QooX0AanvQD0/dqBCju35VnIIMK4Zww41u
+    BPQ3YBgQYVGv+BVsr5O+O7cJvKjCtLQC8tSeD/7pzs/V80HunFz7SS0budO5j94P
+    VtKFNnuupuHJJCS+fg9uIOdlp+ZzH3slw+OucnQgEDcFm8CwiUyeQN5RAoGAGOYg
+    BIuk5amRAlJvE31LRYkJ/Ex/pfexAjM8vnSK4P/kx2fw+uRj/Nwh9sm3vRfSfeZJ
+    zPMURHbYMDtEs+ygcblInag0m4hxNG4cUJikKKNoRf5hZWqzbFYGzkj/btlzDEmK
+    O1ybCHd8CrtIRROtZJlE4qbVpmjRIAl6QRbTk5ECgYBYxA+IXV8KJ2FGWFmIb3Zi
+    t2eHFcg+ZjXCXGVKI4/6tHeARouc+gYs3oiDSP4/TKqte591LlfH7fKzBSCDe2u8
+    pZMcbW0wlzaIQDTMyLNoNrai4lMGjL1SCGBskJvbKXGRxOSsnlyJIryQUYFVlHXM
+    MuDiatDBMwdF3alhouZKTA==
+    -----END PRIVATE KEY-----
+{% endif %}
+{% if ssl_enabled | default(false) and ssl_dhparam is defined %}
+
+  # Diffie-Hellman parameters for enhanced security
+  dhparam.pem: |
+{{ ssl_dhparam | indent(4, true) }}
+{% endif %}
+{% if ssl_enabled | default(false) and ssl_ca_cert is defined %}
+
+  # CA certificate chain (if applicable)
+  ca.crt: |
+{{ ssl_ca_cert | indent(4, true) }}
+{% endif %}

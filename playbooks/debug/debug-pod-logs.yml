@@ -1,0 +1,64 @@
+---
+# Debug pod crash issues
+# File: debug-pod-logs.yml
+
+- name: Debug Pod Crash Issues
+  hosts: bastion-asia-southeast1
+  become: yes
+  gather_facts: yes
+  vars :
+    app_name : "streaming-server"
+    app_namespace : "streaming"
+  tasks:
+
+    - name: Get pod status
+      shell: "kubectl -n {{ app_namespace }} get pods -l app={{ app_name }} -o wide"
+      register: pod_status
+      ignore_errors: yes
+
+    - name: Display pod status
+      debug:
+        var: pod_status.stdout_lines
+
+    - name: Get pod events
+      shell: "kubectl -n {{ app_namespace }} get events --sort-by=.metadata.creationTimestamp | tail -20"
+      register: pod_events
+      ignore_errors: yes
+
+    - name: Display recent events
+      debug:
+        var: pod_events.stdout_lines
+
+    - name: Get pod logs (current)
+      shell: "kubectl -n {{ app_namespace }} logs -l app={{ app_name }} --tail=50"
+      register: current_logs
+      ignore_errors: yes
+
+    - name: Display current logs
+      debug:
+        var: current_logs.stdout_lines
+
+    - name: Get pod logs (previous container if crashed)
+      shell: "kubectl -n {{ app_namespace }} logs -l app={{ app_name }} --previous --tail=50"
+      register: previous_logs
+      ignore_errors: yes
+
+    - name: Display previous container logs
+      debug:
+        var: previous_logs.stdout_lines
+      when: previous_logs.rc == 0
+
+    - name: Describe failing pod
+      shell: |
+        POD_NAME=$(kubectl -n {{ app_namespace }} get pods -l app={{ app_name }} -o jsonpath='{.items[0].metadata.name}')
+        if [ -n "$POD_NAME" ]; then
+          kubectl -n {{ app_namespace }} describe pod $POD_NAME
+        else
+          echo "No pods found"
+        fi
+      register: pod_describe
+      ignore_errors: yes
+
+    - name: Display pod description
+      debug:
+        var: pod_describe.stdout_lines

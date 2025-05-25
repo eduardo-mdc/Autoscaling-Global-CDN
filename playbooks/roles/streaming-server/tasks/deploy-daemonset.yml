@@ -1,0 +1,63 @@
+---
+# Deploy HLS streaming server DaemonSet
+# File: playbooks/roles/streaming-server/tasks/deploy-daemonset.yml
+
+- name: Generate HLS streaming DaemonSet manifest
+  template:
+    src: hls-streaming-daemonset.yaml.j2
+    dest: "{{ manifests_dir }}/hls-streaming-daemonset.yaml"
+
+- name: Apply streaming DaemonSet
+  k8s:
+    state: present
+    src: "{{ manifests_dir }}/hls-streaming-daemonset.yaml"
+    wait: true
+    wait_timeout: 300
+
+- name: Wait for DaemonSet rollout using k8s_info
+  k8s_info:
+    api_version: apps/v1
+    kind: DaemonSet
+    name: "{{ app_name }}"
+    namespace: "{{ app_namespace }}"
+    wait: true
+    wait_condition:
+      type: Ready
+      status: "True"
+    wait_timeout: "{{ rollout_timeout | default(300) }}"
+  register: rollout_result
+  when: wait_for_rollout | default(true)
+
+- name: Get DaemonSet status
+  k8s_info:
+    api_version: apps/v1
+    kind: DaemonSet
+    name: "{{ app_name }}"
+    namespace: "{{ app_namespace }}"
+  register: daemonset_status
+
+- name: Display DaemonSet status
+  debug:
+    msg: |
+      DaemonSet {{ app_name }} status:
+      - Desired: {{ daemonset_status.resources[0].status.desiredNumberScheduled | default('unknown') }}
+      - Ready: {{ daemonset_status.resources[0].status.numberReady | default('0') }}
+      - Available: {{ daemonset_status.resources[0].status.numberAvailable | default('0') }}
+      - Updated: {{ daemonset_status.resources[0].status.updatedNumberScheduled | default('0') }}
+
+- name: Get pod status
+  k8s_info:
+    api_version: v1
+    kind: Pod
+    namespace: "{{ app_namespace }}"
+    label_selectors:
+      - "app={{ app_name }}"
+  register: pod_status
+
+- name: Display pod status
+  debug:
+    msg: |
+      Found {{ pod_status.resources | length }} pods for {{ app_name }}:
+      {% for pod in pod_status.resources %}
+      - {{ pod.metadata.name }}: {{ pod.status.phase }} on {{ pod.spec.nodeName | default('unknown') }}
+      {% endfor %}

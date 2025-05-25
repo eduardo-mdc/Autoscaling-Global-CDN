@@ -305,23 +305,7 @@ $(json_to_ansible_yaml "$bastion_internal_ips_json" | sed 's/^/  /')
 bastion_ssh_via_admin:
 $(json_to_ansible_yaml "$bastion_ssh_via_admin_json" | sed 's/^/  /')
 
-# Docker Hub Configuration (customize as needed)
-docker_hub_image: "your-dockerhub-username/streaming-server"
-docker_hub_tag: "latest"
 
-# Application Configuration
-app_name: "streaming-server"
-app_namespace: "streaming"
-app_replicas: 3
-app_container_port: 80
-app_rtmp_port: 1935
-app_resource_memory_request: "256Mi"
-app_resource_cpu_request: "100m"
-app_resource_memory_limit: "512Mi"
-app_resource_cpu_limit: "500m"
-app_health_path: "/healthz"
-app_health_init_delay: 10
-app_health_period: 5
 
 # Environment (can be overridden per deployment)
 environment: "production"

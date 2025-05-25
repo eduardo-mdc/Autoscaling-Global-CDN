@@ -1,0 +1,31 @@
+---
+# Debug DaemonSet variables
+
+
+- name: Debug DaemonSet variables
+  hosts: bastion-asia-southeast1
+  become: yes
+  gather_facts: yes
+
+  tasks:
+    - name : Debug Docker image variables
+      debug :
+        msg : |
+          Docker Image Variables:
+          - docker_hub_image: {{ docker_hub_image | default('undefined') }}
+          - docker_hub_tag: {{ docker_hub_tag | default('undefined') }}
+          - Full image: {{ docker_hub_image | default('nginx') }}:{{ docker_hub_tag | default('alpine') }}
+
+          App Variables:
+          - app_name: {{ app_name | default('undefined') }}
+          - app_namespace: {{ app_namespace | default('undefined') }}
+
+    - name : Check what image is in the generated manifest
+      shell : "grep -A 5 'image:' {{ manifests_dir }}/hls-streaming-daemonset.yaml || echo 'No manifest found'"
+      register : manifest_image
+      ignore_errors : yes
+
+    - name : Display manifest image info
+      debug :
+        var : manifest_image.stdout_lines
+

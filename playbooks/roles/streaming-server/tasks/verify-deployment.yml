@@ -1,0 +1,87 @@
+---
+# Verify HLS streaming deployment
+# File: playbooks/roles/streaming-server/tasks/verify-deployment.yml
+
+- name: Get current region from bastion hostname
+  shell: "hostname | grep -o 'bastion-[^-]*' | cut -d'-' -f2 || echo 'unknown'"
+  register: current_region
+
+- name: Display current region
+  debug:
+    msg: "Verifying deployment in region: {{ current_region.stdout }}"
+
+- name: Check namespace status
+  k8s_info:
+    api_version: v1
+    kind: Namespace
+    name: "{{ app_namespace }}"
+  register: namespace_check
+
+- name: Check DaemonSet health
+  k8s_info:
+    api_version: apps/v1
+    kind: DaemonSet
+    name: "{{ app_name }}"
+    namespace: "{{ app_namespace }}"
+  register: daemonset_health
+
+- name: Check pod health
+  k8s_info:
+    api_version: v1
+    kind: Pod
+    namespace: "{{ app_namespace }}"
+    label_selectors:
+      - "app={{ app_name }}"
+  register: pod_health
+
+- name: Check service status
+  k8s_info:
+    api_version: v1
+    kind: Service
+    name: "{{ app_name }}"
+    namespace: "{{ app_namespace }}"
+  register: service_health
+
+- name: Test HLS endpoint from within cluster
+  shell: |
+    POD_NAME=$(kubectl -n {{ app_namespace }} get pods -l app={{ app_name }} -o jsonpath='{.items[0].metadata.name}')
+    if [ -n "$POD_NAME" ]; then
+      kubectl -n {{ app_namespace }} exec -it $POD_NAME -- curl -k -s -o /dev/null -w "%{http_code}" https://localhost:{{ app_https_port }}/health || echo "Connection failed"
+    else
+      echo "No pods found"
+    fi
+  register: hls_health_check
+  ignore_errors: yes
+
+- name: Test HLS streaming endpoint
+  shell: |
+    POD_NAME=$(kubectl -n {{ app_namespace }} get pods -l app={{ app_name }} -o jsonpath='{.items[0].metadata.name}')
+    if [ -n "$POD_NAME" ]; then
+      kubectl -n {{ app_namespace }} exec -it $POD_NAME -- curl -k -s -o /dev/null -w "%{http_code}" https://localhost:{{ app_https_port }}/hls/ || echo "HLS endpoint not ready"
+    else
+      echo "No pods found"
+    fi
+  register: hls_streaming_check
+  ignore_errors: yes
+
+- name: Display verification summary
+  debug:
+    msg: |
+      === DEPLOYMENT VERIFICATION SUMMARY ===
+      Region: {{ current_region.stdout }}
+      
+      Namespace Status: {{ 'OK' if namespace_check.resources else 'FAILED' }}
+      
+      DaemonSet Status: {{ 'OK - ' + (daemonset_health.resources[0].status.numberReady | string) + '/' + (daemonset_health.resources[0].status.desiredNumberScheduled | string) + ' ready' if daemonset_health.resources else 'FAILED' }}
+      
+      Pod Status: {{ pod_health.resources | length }} pods found
+      {% for pod in pod_health.resources %}
+      - {{ pod.metadata.name }}: {{ pod.status.phase }}
+      {% endfor %}
+      
+      Service Status: {{ 'OK - ' + (service_health.resources[0].spec.ports | length | string) + ' ports' if service_health.resources else 'FAILED' }}
+      
+      Health Check: {{ hls_health_check.stdout }}
+      HLS Endpoint: {{ hls_streaming_check.stdout }}
+      
+      === END VERIFICATION ===

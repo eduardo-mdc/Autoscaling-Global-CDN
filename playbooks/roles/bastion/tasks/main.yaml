@@ -109,3 +109,41 @@
       Bastion host configured for region: {{ bastion_region }}
       GKE cluster: {{ project_name }}-gke-{{ bastion_region }}
       Use: /opt/scripts/connect-to-local-cluster.sh
+
+- name: Create directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    mode: '0755'
+    owner: root
+    group: root
+  loop:
+    - "/opt/scripts"
+    - "/opt/gcp"
+
+- name: Set secure permissions on GCP directory
+  file:
+    path: "/opt/gcp"
+    mode: '0700'
+    owner: root
+    group: root
+
+- name: Copy service account credentials
+  copy:
+    src: "~/terraform-sa.json"
+    dest: "/opt/gcp/terraform-sa.json"
+    mode: '0600'
+    owner: root
+    group: root
+
+- name: Authenticate gcloud with service account
+  command: gcloud auth activate-service-account --key-file=/opt/gcp/terraform-sa.json
+  become: yes
+
+- name : Connect to local GKE cluster
+  shell : "/opt/scripts/connect-to-local-cluster.sh"
+  register : cluster_connect
+
+
+
+
