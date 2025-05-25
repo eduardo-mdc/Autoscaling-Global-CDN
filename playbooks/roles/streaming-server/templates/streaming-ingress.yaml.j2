@@ -1,0 +1,52 @@
+# playbooks/roles/streaming-server/templates/streaming-ingress.yaml.j2
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ app_name }}-ingress
+  namespace: {{ app_namespace }}
+  labels:
+    app: {{ app_name }}
+    environment: {{ deployment_environment | default('production') }}
+    created-by: ansible
+    ingress-type: neg-only
+  annotations:
+    # GCP-specific annotations - NO global IP to avoid conflict
+    kubernetes.io/ingress.class: "gce"
+
+    # Enable NEG (Network Endpoint Groups) for better load balancing
+    cloud.google.com/neg: '{"ingress": true}'
+
+    # Backend configuration for health checks and timeouts
+    cloud.google.com/backend-config: '{"default": "{{ project_name }}-backend-config"}'
+
+    # Allow HTTP traffic
+    kubernetes.io/ingress.allow-http: "true"
+
+    # No SSL cert needed - this Ingress won't serve traffic
+spec:
+  # Remove the TLS section - let the pre-shared-cert annotation handle SSL
+  rules:
+    # Default rule for all hosts (geographic routing)
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ app_name }}
+                port:
+                  number: {{ app_http_port | default('80') | int }}
+          - path: /health
+            pathType: Exact
+            backend:
+              service:
+                name: {{ app_name }}
+                port:
+                  number: {{ app_http_port | default('80') | int }}
+          - path: /hls
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ app_name }}
+                port:
+                  number: {{ app_http_port | default('80') | int }}

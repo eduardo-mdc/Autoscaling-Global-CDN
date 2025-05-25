@@ -254,9 +254,15 @@ create_ansible_vars() {
     local ssh_key_debug
     local bastion_internal_ips_json
     local bastion_ssh_via_admin_json
+    local domain_configuration_json
+    local deployment_urls_json
+    local nameserver_instructions_json
 
     bastion_internal_ips_json=$(get_terraform_output_json "bastion_internal_ips")
     bastion_ssh_via_admin_json=$(get_terraform_output_json "bastion_ssh_via_admin")
+    domain_configuration_json=$(get_terraform_output_json "domain_configuration")
+    deployment_urls_json=$(get_terraform_output_json "deployment_urls")
+    nameserver_instructions_json=$(get_terraform_output_json "nameserver_instructions")
 
     admin_public_ip=$(get_terraform_output "admin_public_ip")
     admin_ssh_command=$(get_terraform_output "admin_ssh_command")
@@ -285,6 +291,18 @@ admin_ssh_command: "$admin_ssh_command"
 load_balancer_ip: "$load_balancer_ip"
 ssh_key_debug: "$ssh_key_debug"
 
+# Domain Configuration
+domain_configuration:
+$(json_to_ansible_yaml "$domain_configuration_json" | sed 's/^/  /')
+
+# Deployment URLs
+deployment_urls:
+$(json_to_ansible_yaml "$deployment_urls_json" | sed 's/^/  /')
+
+# Nameserver Instructions
+nameserver_instructions:
+$(json_to_ansible_yaml "$nameserver_instructions_json" | sed 's/^/  /')
+
 # GKE Clusters
 gke_clusters:
 $(json_to_ansible_yaml "$gke_clusters_json" | sed 's/^/  /')
@@ -305,7 +323,9 @@ $(json_to_ansible_yaml "$bastion_internal_ips_json" | sed 's/^/  /')
 bastion_ssh_via_admin:
 $(json_to_ansible_yaml "$bastion_ssh_via_admin_json" | sed 's/^/  /')
 
-
+# Ingress Configuration for managed SSL
+ssl_cert_type: "managed"
+domain_name: "$(echo "$domain_configuration_json" | python3 -c "import json, sys; data=json.load(sys.stdin); print(data.get('domain_name', ''))" 2>/dev/null || echo "")"
 
 # Environment (can be overridden per deployment)
 environment: "production"

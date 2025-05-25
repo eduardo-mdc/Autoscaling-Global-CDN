@@ -12,5 +12,8 @@ admin_machine_type  = "e2-standard-2"
 regions             = ["europe-west4", "us-south1", "asia-southeast1"]
 enable_cdn          = false
 
-# Uncomment and set domain_name if you want to use a custom domain
-# domain_name           = "example.com"
+# Domain and SSL configuration
+domain_name         = "adm-cdn.pt"
+enable_regional_subdomains = false  # Set to true if you want europe.yourdomain.com, etc.
+enable_caa_records        = true
+additional_domains        = []  # Add any additional domains here

@@ -119,7 +119,7 @@ Deploy the infrastructure using the automated script:
 
 ```bash
 # Make sure you're in the project root
-cd multi-region-gke-streaming
+cd multi-region-gke-streaming 
 
 # Deploy infrastructure
 ./deploy.sh --apply

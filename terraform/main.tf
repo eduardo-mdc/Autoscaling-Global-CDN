@@ -136,7 +136,6 @@ module "bastion" {
   admin_cidr        = module.admin.admin_subnet_cidr
 }
 
-# Create global HTTP(S) load balancer
 module "loadbalancer" {
   source = "./modules/loadbalancer"
 
@@ -144,8 +143,14 @@ module "loadbalancer" {
   project_name = var.project_name
   regions      = var.regions
   domain_name  = var.domain_name
-  enable_cdn   = var.enable_cdn
+
+  # Domain features
+  enable_regional_subdomains = var.enable_regional_subdomains
+  enable_caa_records        = var.enable_caa_records
+  additional_domains        = var.additional_domains
 
   backend_services = []
   regional_backend_services = {}
+
+  depends_on = [module.gke]
 }

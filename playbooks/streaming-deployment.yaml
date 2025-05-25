@@ -73,8 +73,8 @@
         name: streaming-server
         tasks_from: deploy-service
 
-- name: Phase 6 - Deploy Ingress (Optional)
-  hosts: bastion-asia-southeast1 
+- name: Phase 6 - Deploy Ingress
+  hosts: bastion-asia-southeast1
   become: yes
   gather_facts: yes
   tags: ['phase6', 'ingress']

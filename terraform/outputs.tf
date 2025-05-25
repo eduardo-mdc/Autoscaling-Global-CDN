@@ -67,6 +67,26 @@ output "bastion_ssh_via_admin" {
   }
 }
 
+output "domain_configuration" {
+  description = "Domain and SSL configuration"
+  value = {
+    domain_name           = module.loadbalancer.domain_name
+    nameservers          = module.loadbalancer.dns_zone_nameservers
+    ssl_certificate_name = module.loadbalancer.ssl_certificate_name
+    ssl_domains         = module.loadbalancer.ssl_certificate_domains
+  }
+}
+
+output "nameserver_instructions" {
+  description = "Instructions for configuring nameservers"
+  value       = module.loadbalancer.nameserver_configuration
+}
+
+output "deployment_urls" {
+  description = "URLs to access your deployment"
+  value       = module.loadbalancer.deployment_urls
+}
+
 output "kubectl_access_via_bastions" {
   description = "Instructions for accessing GKE clusters via bastion hosts"
   value = {

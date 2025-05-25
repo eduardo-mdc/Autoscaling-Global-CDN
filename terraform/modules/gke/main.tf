@@ -136,7 +136,17 @@ resource "google_container_node_pool" "primary" {
       enable_secure_boot          = false
       enable_integrity_monitoring = true
     }
+
+
   }
+  # Lifecycle management - prevent unnecessary node pool updates
+  lifecycle {
+    ignore_changes = [
+      node_config[0].resource_labels,
+      node_config[0].kubelet_config
+    ]
+  }
+
 
   # Add timeout settings
   timeouts {

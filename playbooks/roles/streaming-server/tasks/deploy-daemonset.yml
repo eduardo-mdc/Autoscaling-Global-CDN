@@ -11,22 +11,10 @@
   k8s:
     state: present
     src: "{{ manifests_dir }}/hls-streaming-daemonset.yaml"
-    wait: true
-    wait_timeout: 300
 
-- name: Wait for DaemonSet rollout using k8s_info
-  k8s_info:
-    api_version: apps/v1
-    kind: DaemonSet
-    name: "{{ app_name }}"
-    namespace: "{{ app_namespace }}"
-    wait: true
-    wait_condition:
-      type: Ready
-      status: "True"
-    wait_timeout: "{{ rollout_timeout | default(300) }}"
-  register: rollout_result
-  when: wait_for_rollout | default(true)
+- name: Sleep to allow DaemonSet to start scheduling
+  pause:
+    seconds: 30
 
 - name: Get DaemonSet status
   k8s_info:
@@ -61,3 +49,23 @@
       {% for pod in pod_status.resources %}
       - {{ pod.metadata.name }}: {{ pod.status.phase }} on {{ pod.spec.nodeName | default('unknown') }}
       {% endfor %}
+
+- name: Show quick debug info if needed
+  debug:
+    msg: |
+      Quick debug commands:
+      - Pod logs: kubectl -n {{ app_namespace }} logs -l app={{ app_name }} --tail=20
+      - Pod details: kubectl -n {{ app_namespace }} describe pods -l app={{ app_name }}
+      - Recent events: kubectl -n {{ app_namespace }} get events --sort-by=.metadata.creationTimestamp | tail -10
+  when:
+    - daemonset_status.resources[0].status.numberReady | default(0) | int == 0
+    - pod_status.resources | length > 0
+
+- name: Verify DaemonSet deployment success
+  debug:
+    msg: |
+      ✅ DaemonSet {{ app_name }} has been deployed.
+      Check the status above. If pods are not ready, you can:
+      - Check pod logs: kubectl -n {{ app_namespace }} logs -l app={{ app_name }}
+      - Describe pods: kubectl -n {{ app_namespace }} describe pods -l app={{ app_name }}
+      - Check events: kubectl -n {{ app_namespace }} get events
