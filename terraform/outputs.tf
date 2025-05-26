@@ -64,10 +64,10 @@ output "ids_endpoints" {
   value       = module.ids.ids_endpoints
 }
 
-# output "monitoring_dashboard_url" {
-#   description = "URL to access the created monitoring dashboard"
-#   value       = module.monitoring.dashboard_url
-# }
+output "monitoring_dashboard_url" {
+  description = "URL to access the created monitoring dashboard"
+  value       = module.monitoring.dashboard_url
+}
 
 output "dns_name_servers" {
   description = "The list of nameservers that should be configured with the domain registrar"

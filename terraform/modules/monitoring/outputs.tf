@@ -1,11 +1,11 @@
 output "dashboard_url" {
   description = "URL to access the created monitoring dashboard"
-  value       = "https://console.cloud.google.com/monitoring/dashboards/custom/${google_monitoring_dashboard.lb_dashboard.name}?project=${var.project_id}"
+  value       = "https://console.cloud.google.com/monitoring/dashboards/custom/${google_monitoring_dashboard.lb_dashboard.id}?project=${var.project_id}"
 }
 
 output "dashboard_name" {
   description = "Name of the created monitoring dashboard"
-  value       = google_monitoring_dashboard.lb_dashboard.name
+  value       = var.dashboard_display_name
 }
 
 output "dashboard_id" {
