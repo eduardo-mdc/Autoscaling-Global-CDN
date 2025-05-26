@@ -12,7 +12,7 @@ metadata:
     content-type: videos
   annotations:
     description: "PVC for mounting regional video content in {{ bastion_region }}"
-    bucket-name: "{{ current_bucket_name | default(project_name + '-content-' + bastion_region) }}"
+    bucket-name: "{{ current_bucket_name }}"
     volume.kubernetes.io/storage-provisioner: "gcs-fuse.csi.storage.gke.io"
 spec:
   accessModes:

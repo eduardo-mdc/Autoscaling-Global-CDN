@@ -2,26 +2,30 @@
 # Deploy HLS streaming DaemonSet
 # File: playbooks/roles/streaming-server/tasks/deploy-daemonset.yml
 
-- name: Generate HLS streaming DaemonSet
+
+- name: Generate HLS streaming Deployment
   template:
-    src: hls-streaming-daemonset.yaml.j2
-    dest: "{{ manifests_dir }}/hls-streaming-daemonset.yaml"
+    src: streaming-deployment.yaml.j2  # Changed filename
+    dest: "{{ manifests_dir }}/streaming-deployment.yaml"  # Changed filename
 
-- name: Debug generated DaemonSet manifest (first 15 lines)
-  shell: "head -15 {{ manifests_dir }}/hls-streaming-daemonset.yaml"
-  register: daemonset_manifest_preview
-
-- name: Show DaemonSet manifest preview
-  debug:
-    msg: |
-      Generated HLS DaemonSet manifest preview:
-      {{ daemonset_manifest_preview.stdout_lines | join('\n') }}
-
-- name: Apply HLS streaming DaemonSet
+- name: Apply HLS streaming Deployment
   k8s:
     state: present
-    src: "{{ manifests_dir }}/hls-streaming-daemonset.yaml"
+    src: "{{ manifests_dir }}/streaming-deployment.yaml"  # Changed filename
     wait: true
+
+- name: Generate HPA manifest  # Added HPA deployment
+  template:
+    src: streaming-hpa.yaml.j2
+    dest: "{{ manifests_dir }}/streaming-hpa.yaml"
+  when: enable_hpa | default(true) | bool
+
+- name: Apply HPA  # Added HPA deployment
+  k8s:
+    state: present
+    src: "{{ manifests_dir }}/streaming-hpa.yaml"
+    wait: true
+  when: enable_hpa | default(true) | bool
 
 - name: Wait for DaemonSet to start scheduling
   pause:

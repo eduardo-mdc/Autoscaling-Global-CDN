@@ -11,7 +11,7 @@ metadata:
     purpose: gcs-access
   annotations:
     # Workload Identity binding to GCP service account
-    iam.gke.io/gcp-service-account: "{{ content_reader_sa_email }}"
+    iam.gke.io/gcp-service-account: "uporto-cd-content-reader@uporto-cd.iam.gserviceaccount.com"
     description: "Service account for {{ app_name }} pods to access GCS content"
     created-by: "ansible"
 automountServiceAccountToken: true

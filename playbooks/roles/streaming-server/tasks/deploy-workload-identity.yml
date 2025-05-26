@@ -2,17 +2,51 @@
 # Deploy Workload Identity ServiceAccount for GCS access
 # File: playbooks/roles/streaming-server/tasks/deploy-workload-identity.yml
 
-- name: Get current region from bastion hostname
-  shell: "hostname | grep -o 'bastion-[^-]*' | cut -d'-' -f2 || echo 'unknown'"
+- name: Ensure app_name is set
+  set_fact:
+    app_name: "streaming-server"
+
+- name: Ensure app_namespace is set
+  set_fact:
+    app_namespace: "streaming"
+
+- name: Set manifest directory
+  set_fact:
+    manifests_dir: "/opt/k8s-manifests/streaming-server"
+
+- name: Get current region from bastion hostname (robust method)
+  shell: "hostname | grep -o 'bastion-[a-z0-9-]*' | cut -d'-' -f2-"
   register: current_region
+
+- name: Validate region extraction
+  debug:
+    msg: |
+      🔍 Region extraction in Workload Identity:
+      - Hostname: {{ ansible_hostname }}
+      - Extracted region: "{{ current_region.stdout }}"
+      - Region length: {{ current_region.stdout | length }}
 
 - name: Set bastion region fact
   set_fact:
     bastion_region: "{{ current_region.stdout }}"
 
-- name: Set current bucket name with fallback
+- name: Fail if region could not be extracted
+  fail:
+    msg: "Could not extract region from hostname: {{ ansible_hostname }}"
+  when: bastion_region == "" or bastion_region == "unknown"
+
+- name: Set current bucket name with safer fallback
   set_fact:
-    current_bucket_name: "{{ regional_bucket_names[bastion_region] | default(project_name + '-content-' + bastion_region) }}"
+    current_bucket_name: >-
+      {%- if regional_bucket_names is defined and regional_bucket_names is mapping -%}
+        {%- if bastion_region in regional_bucket_names -%}
+          {{ regional_bucket_names[bastion_region] }}
+        {%- else -%}
+          {{ project_name }}-content-{{ bastion_region }}
+        {%- endif -%}
+      {%- else -%}
+        {{ project_name }}-content-{{ bastion_region }}
+      {%- endif -%}
 
 - name: Display Workload Identity setup info
   debug:

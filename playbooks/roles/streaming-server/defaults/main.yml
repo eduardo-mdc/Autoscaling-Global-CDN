@@ -29,8 +29,20 @@ app_liveness_delay: 15
 app_health_period: 5
 app_liveness_period: 15
 
-# Pod anti-affinity
-pod_anti_affinity_weight: 100
+# Deployment-specific settings:
+deployment_type: "Deployment"  
+initial_replicas: 2            
+min_replicas: 1               
+max_replicas: 10              
+
+# HPA settings:
+enable_hpa: true              
+hpa_target_cpu: 70            
+hpa_target_memory: 80         
+
+# Rolling update settings:
+max_surge: "50%"              
+max_unavailable: 0            
 
 # Metrics settings
 prometheus_scrape: "true"

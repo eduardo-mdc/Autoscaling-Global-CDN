@@ -2,8 +2,8 @@
 # Minimal GCS FUSE CSI driver deployment
 # File: playbooks/roles/streaming-server/tasks/deploy-csi-minimal.yml
 
-- name: Get current region from bastion hostname
-  shell: "hostname | grep -o 'bastion-[^-]*' | cut -d'-' -f2 || echo 'unknown'"
+- name: Get current region from bastion hostname (robust method)
+  shell: "hostname | grep -o 'bastion-[a-z0-9-]*' | cut -d'-' -f2-"
   register: current_region
 
 - name: Display current region for CSI driver deployment

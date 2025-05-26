@@ -61,7 +61,7 @@
         name: streaming-server
         tasks_from: deploy-gcs-mount
 
-- name: Phase 5 - Deploy HLS Streaming Server DaemonSet
+- name: Phase 5 - Deploy HLS Streaming Server Deployment
   hosts: bastion-asia-southeast1
   become: yes
   gather_facts: yes
@@ -69,10 +69,10 @@
   serial: 1
 
   tasks:
-    - name: Deploy streaming daemonset
+    - name: Deploy streaming deployment
       include_role:
         name: streaming-server
-        tasks_from: deploy-daemonset
+        tasks_from: deploy-deployment
 
 - name: Phase 6 - Deploy Services
   hosts: bastion-asia-southeast1

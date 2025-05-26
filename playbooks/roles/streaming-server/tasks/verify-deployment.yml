@@ -22,13 +22,23 @@
     name: "{{ app_namespace }}"
   register: namespace_check
 
-- name: Check DaemonSet health
+- name: Check Deployment health
   k8s_info:
     api_version: apps/v1
-    kind: DaemonSet
+    kind: Deployment
     name: "{{ app_name }}"
     namespace: "{{ app_namespace }}"
-  register: daemonset_health
+  register: deployment_health
+
+# Add HPA check:
+- name: Check HPA status
+  k8s_info:
+    api_version: autoscaling/v2
+    kind: HorizontalPodAutoscaler
+    name: "{{ app_name }}-hpa"
+    namespace: "{{ app_namespace }}"
+  register: hpa_status
+  when: enable_hpa | default(true) | bool
 
 - name: Check pod health
   k8s_info:

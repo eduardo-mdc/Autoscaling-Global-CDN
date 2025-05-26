@@ -11,7 +11,7 @@ metadata:
     content-type: videos
   annotations:
     description: "GCS FUSE persistent volume for {{ bastion_region }} content"
-    bucket-name: "{{ regional_bucket_names[bastion_region] }}"
+    bucket-name: "{{ current_bucket_name }}"
     created-by: "ansible"
 spec:
   capacity:
@@ -29,11 +29,11 @@ spec:
   # GCS FUSE CSI driver configuration
   csi:
     driver: gcs-fuse.csi.storage.gke.io
-    volumeHandle: "{{ regional_bucket_names[bastion_region] }}"  # Must be unique
+    volumeHandle: "{{ current_bucket_name }}"  # Must be unique
 
     # CSI driver specific parameters
     volumeAttributes:
-      bucketName: "{{ regional_bucket_names[bastion_region] }}"
+      bucketName: "{{ current_bucket_name }}"
       mountOptions: "implicit-dirs,uid=101,gid=101,file-mode=644,dir-mode=755"
 
       # Performance optimizations for video streaming
@@ -45,7 +45,7 @@ spec:
       readOnly: "true"
 
       # Service account for authentication (will be bound via Workload Identity)
-      serviceAccount: "{{ content_reader_sa_email }}"
+      serviceAccount: "uporto-cd-content-reader@uporto-cd.iam.gserviceaccount.com"
 
   # Node affinity to ensure the volume can be mounted on any node in this region
   nodeAffinity:

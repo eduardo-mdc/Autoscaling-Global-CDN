@@ -1,5 +1,5 @@
 apiVersion: apps/v1
-kind: DaemonSet
+kind: Deployment
 metadata:
   name: {{ app_name }}
   namespace: {{ app_namespace }}
@@ -8,6 +8,12 @@ metadata:
     environment: {{ deployment_environment | default('production') }}
     streaming-type: hls
 spec:
+  replicas: {{ initial_replicas | default('2') }}  # Added replicas
+  strategy:  # Added rolling update strategy
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: {{ max_surge | default('50%') }}
+      maxUnavailable: {{ max_unavailable | default('0') }}
   selector:
     matchLabels:
       app: {{ app_name }}
@@ -22,21 +28,20 @@ spec:
         prometheus.io/port: "{{ metrics_port | default('9090') }}"
         prometheus.io/path: "/metrics"
     spec:
-      # Use the Workload Identity ServiceAccount for GCS access
       serviceAccountName: {{ app_name }}-sa
 
-      affinity:
-        podAntiAffinity:
-          preferredDuringSchedulingIgnoredDuringExecution:
-            - weight: {{ pod_anti_affinity_weight | default('100') }}
-              podAffinityTerm:
-                labelSelector:
-                  matchExpressions:
-                    - key: app
-                      operator: In
-                      values:
+      affinity :
+        podAntiAffinity :
+          preferredDuringSchedulingIgnoredDuringExecution :
+            - weight : 100
+              podAffinityTerm :
+                labelSelector :
+                  matchExpressions :
+                    - key : app
+                      operator : In
+                      values :
                         - {{ app_name }}
-                topologyKey: "kubernetes.io/hostname"
+                topologyKey : "kubernetes.io/hostname"
       containers:
         - name: {{ app_name }}
           image: {{ docker_hub_image | default('nginx:alpine') }}:{{ docker_hub_tag | default('latest') }}

@@ -9,8 +9,14 @@ node_machine_type   = "e2-medium" # 2 vCPU, 4GB memory
 node_disk_size_gb   = 40
 node_disk_type      = "pd-standard"
 admin_machine_type  = "e2-standard-2"
-regions             = ["europe-west4", "us-south1", "asia-southeast1"]
+regions             = ["europe-west2", "us-south1", "asia-southeast1"]
 enable_cdn          = false
+
+zones = {
+  "europe-west2"    = "europe-west2-a",
+  "us-south1"       = "us-south1-a",
+  "asia-southeast1" = "asia-southeast1-a"
+}
 
 # Domain and SSL configuration
 domain_name         = "adm-cdn.pt"
@@ -27,4 +33,4 @@ enable_storage_lifecycle        = false # Manual content management
 enable_cache_lifecycle          = false # Don't auto-delete cached content
 enable_bucket_notifications     = false # Manual sync for now
 storage_public_access_prevention = "enforced"  # Secure by default
-storage_force_destroy           = false # Protect against accidental deletion
+storage_force_destroy           = true # False -> Protect against accidental deletion

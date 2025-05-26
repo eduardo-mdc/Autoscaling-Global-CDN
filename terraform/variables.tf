@@ -1,3 +1,5 @@
+# terraform/variables.tf
+
 variable "project_id" {
   description = "GCP Project ID"
   type        = string
@@ -18,17 +20,13 @@ variable "project_name" {
 variable "regions" {
   description = "GCP regions to deploy to"
   type        = list(string)
-  default     = ["europe-west4", "us-east4", "asia-southeast1"] # Netherlands, Virginia, Singapore
+  default     = ["europe-west2", "us-south1", "asia-southeast1"]
 }
 
 variable "zones" {
-  description = "GCP zones to deploy to (one per region)"
+  description = "GCP zones to deploy to (one per region) - auto-generated if not specified"
   type        = map(string)
-  default = {
-    "europe-west4"    = "europe-west4-a",
-    "us-east4"        = "us-east4-a",
-    "asia-southeast1" = "asia-southeast1-a"
-  }
+  default     = {}
 }
 
 variable "min_nodes" {
@@ -46,13 +44,13 @@ variable "max_nodes" {
 variable "node_machine_type" {
   description = "Machine type for GKE nodes"
   type        = string
-  default     = "e2-micro"
+  default     = "e2-medium"
 }
 
 variable "node_disk_size_gb" {
   description = "Disk size for GKE nodes in GB"
   type        = number
-  default     = 50
+  default     = 40
 }
 
 variable "node_disk_type" {
@@ -64,13 +62,13 @@ variable "node_disk_type" {
 variable "admin_machine_type" {
   description = "Machine type for admin VM"
   type        = string
-  default     = "e2-standard-2" # 2 vCPU, 8GB memory
+  default     = "e2-standard-2"
 }
 
 variable "admin_username" {
   description = "Username to configure on the admin VM"
   type        = string
-  default     = "admin"
+  default     = "ubuntu"
 }
 
 variable "ssh_public_key_path" {
@@ -79,13 +77,11 @@ variable "ssh_public_key_path" {
   default     = "~/.ssh/id_rsa.pub"
 }
 
-
 variable "enable_cdn" {
   description = "Enable Cloud CDN for caching static content"
   type        = bool
   default     = false
 }
-
 
 variable "domain_name" {
   description = "Domain name to use for global load balancing (e.g., example.com). Leave empty to skip domain setup."
@@ -111,11 +107,10 @@ variable "additional_domains" {
   default     = []
 }
 
-
 variable "master_bucket_location" {
   description = "Location for the master content bucket (multi-regional: US, EU, or ASIA)"
   type        = string
-  default     = "US"
+  default     = "EU"
 
   validation {
     condition = contains([
@@ -124,6 +119,7 @@ variable "master_bucket_location" {
     error_message = "Master bucket location must be a multi-regional location: US, EU, or ASIA."
   }
 }
+
 # Storage Configuration Variables
 variable "environment" {
   description = "Environment label for resources"

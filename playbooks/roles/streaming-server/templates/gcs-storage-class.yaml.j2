@@ -13,7 +13,7 @@ allowVolumeExpansion: false
 volumeBindingMode: Immediate
 parameters:
   # Use regional bucket for this region
-  bucketName: "{{ regional_bucket_names[bastion_region] }}"
+  bucketName: "{{ current_bucket_name }}"
 
   # Mount options for optimal performance
   mountOptions: "implicit-dirs,uid=101,gid=101,file-mode=644,dir-mode=755"
@@ -29,7 +29,7 @@ parameters:
   fileCacheCapacity: "1000"
 
   # GCP service account for bucket access (via Workload Identity)
-  serviceAccount: "{{ content_reader_sa_email }}"
+  serviceAccount: "uporto-cd-content-reader@uporto-cd.iam.gserviceaccount.com"
 
 # Additional annotations for monitoring and management
 metadata:
