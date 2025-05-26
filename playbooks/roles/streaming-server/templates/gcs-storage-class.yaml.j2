@@ -8,6 +8,11 @@ metadata:
     app: {{ app_name }}
     region: {{ bastion_region }}
     storage-type: gcs-fuse
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "false"
+    description: "GCS FUSE storage class for {{ bastion_region }} regional content"
+    bucket-region: "{{ bastion_region }}"
+    content-type: "streaming-videos"
 provisioner: gcs-fuse.csi.storage.gke.io
 allowVolumeExpansion: false
 volumeBindingMode: Immediate
@@ -30,11 +35,3 @@ parameters:
 
   # GCP service account for bucket access (via Workload Identity)
   serviceAccount: "uporto-cd-content-reader@uporto-cd.iam.gserviceaccount.com"
-
-# Additional annotations for monitoring and management
-metadata:
-  annotations:
-    storageclass.kubernetes.io/is-default-class: "false"
-    description: "GCS FUSE storage class for {{ bastion_region }} regional content"
-    bucket-region: "{{ bastion_region }}"
-    content-type: "streaming-videos"

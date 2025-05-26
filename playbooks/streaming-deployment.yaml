@@ -13,7 +13,7 @@
     - content-manager
 
 - name: Phase 1b - Prepare Bastion VM for K8s Management
-  hosts: bastion-asia-southeast1
+  hosts: bastion-europe-west2
   become: yes
   gather_facts: yes
   tags: ['phase1', 'setup']
@@ -22,7 +22,7 @@
     - bastion
 
 - name: Phase 2 - Deploy Namespace to All Regions
-  hosts: bastion-asia-southeast1
+  hosts: bastion-europe-west2
   become: yes
   gather_facts: yes
   tags: ['phase2', 'namespace']
@@ -35,7 +35,7 @@
         tasks_from: deploy-namespace
 
 - name: Phase 3 - Deploy ConfigMaps to All Regions
-  hosts: bastion-asia-southeast1
+  hosts: bastion-europe-west2
   become: yes
   gather_facts: yes
   tags: ['phase3', 'configmap']
@@ -49,7 +49,7 @@
 
 # 🎯 NEW: Phase 4 - Deploy GCS FUSE Mount for Content Access
 - name: Phase 4 - Deploy GCS FUSE Mount
-  hosts: bastion-asia-southeast1
+  hosts: bastion-europe-west2
   become: yes
   gather_facts: yes
   tags: ['phase4', 'gcs-mount', 'storage']
@@ -62,7 +62,7 @@
         tasks_from: deploy-gcs-mount
 
 - name: Phase 5 - Deploy HLS Streaming Server Deployment
-  hosts: bastion-asia-southeast1
+  hosts: bastion-europe-west2
   become: yes
   gather_facts: yes
   tags: ['phase5', 'streaming']
@@ -75,7 +75,7 @@
         tasks_from: deploy-deployment
 
 - name: Phase 6 - Deploy Services
-  hosts: bastion-asia-southeast1
+  hosts: bastion-europe-west2
   become: yes
   gather_facts: yes
   tags: ['phase6', 'service']
@@ -88,7 +88,7 @@
         tasks_from: deploy-service
 
 - name: Phase 7 - Deploy Ingress
-  hosts: bastion-asia-southeast1
+  hosts: bastion-europe-west2
   become: yes
   gather_facts: yes
   tags: ['phase7', 'ingress']
@@ -101,7 +101,7 @@
         tasks_from: deploy-ingress
 
 - name: Phase 8 - Deploy Monitoring (Optional)
-  hosts: bastion-asia-southeast1
+  hosts: bastion-europe-west2
   become: yes
   gather_facts: yes
   tags: ['phase8', 'monitoring']
@@ -114,7 +114,7 @@
         tasks_from: deploy-monitoring
 
 - name: Phase 9 - Comprehensive Verification
-  hosts: bastion-asia-southeast1
+  hosts: bastion-europe-west2
   become: yes
   gather_facts: yes
   tags: ['phase9', 'verify']

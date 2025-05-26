@@ -71,6 +71,10 @@ resource "google_container_cluster" "cluster" {
     network_policy_config {
       disabled = false
     }
+
+    gcs_fuse_csi_driver_config {
+      enabled = true
+    }
   }
 
   # Depend on the APIs being enabled
@@ -87,7 +91,7 @@ resource "google_container_node_pool" "primary" {
   cluster    = google_container_cluster.cluster.id
 
   node_locations = null # Can use any zone in the region
-  node_count = 1  # Initial node count, will be managed by autoscaling
+  initial_node_count = 1
 
   # Autoscaling configuration
   autoscaling {
