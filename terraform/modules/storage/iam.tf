@@ -52,12 +52,19 @@ resource "google_storage_bucket_iam_member" "pods_regional_buckets" {
   member = "serviceAccount:${google_service_account.content_reader.email}"
 }
 
-# Workload Identity binding for Kubernetes service account
+
+
 resource "google_service_account_iam_member" "workload_identity_binding" {
+  for_each = toset(var.regions)
+
   service_account_id = google_service_account.content_reader.name
   role               = "roles/iam.workloadIdentityUser"
-  member             = "serviceAccount:${var.project_id}.svc.id.goog[streaming/streaming-server]"
+
+  # Bind to streaming namespace in each region
+  member = "serviceAccount:${var.project_id}.svc.id.goog[streaming/streaming-server-sa]"
 }
+
+
 
 # Grant storage object admin role to admin service account for cross-bucket operations
 resource "google_project_iam_member" "admin_storage_object_admin" {

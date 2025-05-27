@@ -1,0 +1,82 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: streaming-server-sa
+  namespace: {{ app_namespace }}
+  annotations:
+    iam.gke.io/gcp-service-account: "{{ content_reader_sa_email }}"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ app_name }}
+  namespace: {{ app_namespace }}
+  labels:
+    app: {{ app_name }}
+spec:
+  replicas: {{ initial_replicas | default('2') }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: {{ max_surge | default('50%') }}
+      maxUnavailable: {{ max_unavailable | default('0') }}
+  selector:
+    matchLabels:
+      app: {{ app_name }}
+  template:
+    metadata:
+      labels:
+        app: {{ app_name }}
+      annotations:
+        # CRITICAL: Enable GCS FUSE volumes
+        gke-gcsfuse/volumes: "true"
+        # Optional: Set ephemeral storage limit
+        gke-gcsfuse/ephemeral-storage-limit: "50Gi"
+    spec:
+      serviceAccountName: streaming-server-sa
+      containers:
+        - name: {{ app_name }}
+          image: {{ docker_hub_image }}:{{ docker_hub_tag }}
+          ports:
+            - containerPort: 80
+              name: http
+            - containerPort: 443
+              name: https
+            - containerPort: {{ metrics_port | default('9090') }}
+              name: metrics
+          resources:
+            requests:
+              memory: "{{ app_memory_request }}"
+              cpu: "{{ app_cpu_request }}"
+              ephemeral-storage: "5Gi"
+            limits:
+              memory: "{{ app_memory_limit }}"
+              cpu: "{{ app_cpu_limit }}"
+              ephemeral-storage: "50Gi"
+          volumeMounts:
+            - name: nginx-config
+              mountPath: /etc/nginx/nginx.conf
+              subPath: nginx.conf
+              readOnly: true
+            - name: html-content
+              mountPath: /usr/share/nginx/html
+              readOnly: true
+            # CRITICAL: GCS mount using CSI ephemeral volume
+            - name: gcs-content
+              mountPath: /mnt/videos
+              readOnly: true
+      volumes:
+        - name: nginx-config
+          configMap:
+            name: {{ app_name }}-nginx-config
+        - name: html-content
+          configMap:
+            name: {{ app_name }}-html-content
+        # CRITICAL: CSI ephemeral volume for GCS
+        - name: gcs-content
+          csi:
+            driver: gcsfuse.csi.storage.gke.io
+            readOnly: true
+            volumeAttributes:
+              bucketName: "{{ regional_bucket_names[bastion_region] }}"
+              mountOptions: "implicit-dirs"

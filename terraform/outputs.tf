@@ -156,3 +156,16 @@ output "content_management_instructions" {
     }
   }
 }
+
+output "gcs_csi_enabled" {
+  description = "GCS CSI driver enablement status per cluster"
+  value = {
+    for region in var.regions :
+    region => "enabled"
+  }
+}
+
+output "workload_identity_pool" {
+  description = "Workload Identity pool for the project"
+  value       = "${var.project_id}.svc.id.goog"
+}

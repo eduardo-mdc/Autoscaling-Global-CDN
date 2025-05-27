@@ -1,126 +1,62 @@
 ---
-# Deploy HLS streaming DaemonSet
-# File: playbooks/roles/streaming-server/tasks/deploy-daemonset.yml
+# Deploy streaming server with CSI ephemeral volume
 
+- name: Get current region from bastion hostname
+  shell: "hostname | grep -o 'bastion-[a-z0-9-]*' | cut -d'-' -f2-"
+  register: current_region
 
-- name: Generate HLS streaming Deployment
+- name: Set bastion region fact
+  set_fact:
+    bastion_region: "{{ current_region.stdout }}"
+
+- name: Verify CSI driver is available
+  shell: "kubectl get csidriver gcsfuse.csi.storage.gke.io"
+  register: csi_check
+  failed_when: csi_check.rc != 0
+
+- name: Display CSI driver status
+  debug:
+    msg: "CSI driver available: {{ csi_check.rc == 0 }}"
+
+- name: Create ServiceAccount and Deployment manifest
   template:
-    src: streaming-deployment.yaml.j2  # Changed filename
-    dest: "{{ manifests_dir }}/streaming-deployment.yaml"  # Changed filename
+    src: streaming-deployment-csi.yaml.j2
+    dest: "{{ manifests_dir }}/streaming-deployment.yaml"
 
-- name: Apply HLS streaming Deployment
+- name: Apply streaming deployment
   k8s:
     state: present
-    src: "{{ manifests_dir }}/streaming-deployment.yaml"  # Changed filename
+    src: "{{ manifests_dir }}/streaming-deployment.yaml"
     wait: true
+    wait_timeout: 300
 
-- name: Generate HPA manifest  # Added HPA deployment
-  template:
-    src: streaming-hpa.yaml.j2
-    dest: "{{ manifests_dir }}/streaming-hpa.yaml"
-  when: enable_hpa | default(true) | bool
+- name: Wait for pods to be ready
+  shell: |
+    kubectl wait --for=condition=ready pod \
+      -l app={{ app_name }} \
+      -n {{ app_namespace }} \
+      --timeout=300s
+  register: wait_result
 
-- name: Apply HPA  # Added HPA deployment
-  k8s:
-    state: present
-    src: "{{ manifests_dir }}/streaming-hpa.yaml"
-    wait: true
-  when: enable_hpa | default(true) | bool
+- name: Verify GCS mount in pods
+  shell: |
+    POD=$(kubectl get pod -n {{ app_namespace }} -l app={{ app_name }} -o jsonpath='{.items[0].metadata.name}')
+    kubectl exec -n {{ app_namespace }} $POD -- ls -la /mnt/videos/
+  register: mount_check
+  ignore_errors: yes
 
-- name: Wait for DaemonSet to start scheduling
-  pause:
-    seconds: 30
-
-- name: Get DaemonSet status
-  k8s_info:
-    api_version: apps/v1
-    kind: DaemonSet
-    name: "{{ app_name }}"
-    namespace: "{{ app_namespace }}"
-  register: daemonset_status
-
-- name: Get pod status
-  k8s_info:
-    api_version: v1
-    kind: Pod
-    namespace: "{{ app_namespace }}"
-    label_selectors:
-      - "app={{ app_name }}"
-  register: pod_status
-
-- name: Display DaemonSet deployment status
+- name: Display deployment status
   debug:
     msg: |
-      🎬 HLS DaemonSet Deployment Status:
+      Deployment Status:
+      - Region: {{ bastion_region }}
+      - Bucket: {{ regional_bucket_names[bastion_region] }}
+      - Service Account: {{ content_reader_sa_email }}
+      - Mount Check: {{ 'SUCCESS' if mount_check.rc == 0 else 'FAILED' }}
       
-      🎯 DaemonSet: {{ app_name }}
-      - Desired: {{ daemonset_status.resources[0].status.desiredNumberScheduled | default('unknown') }}
-      - Ready: {{ daemonset_status.resources[0].status.numberReady | default('0') }}
-      - Available: {{ daemonset_status.resources[0].status.numberAvailable | default('0') }}
-      - Updated: {{ daemonset_status.resources[0].status.updatedNumberScheduled | default('0') }}
-      
-      🏃 Pods: {{ pod_status.resources | length }} found
-      {% for pod in pod_status.resources %}
-      - {{ pod.metadata.name }}: {{ pod.status.phase }} on {{ pod.spec.nodeName | default('unknown') }}
-      {% endfor %}
-
-- name: Display endpoints and test commands
-  debug:
-    msg: |
-      🌐 Available Endpoints:
-      - Main Page: http://{{ domain_name }}/
-      - HTTPS: https://{{ domain_name }}/
-      - Videos: http://{{ domain_name }}/videos/
-      - Live Streaming: http://{{ domain_name }}/live/
-      - HLS Streams: http://{{ domain_name }}/hls/
-      - Static Files: http://{{ domain_name }}/files/
-      - Health Check: http://{{ domain_name }}/health
-      
-      🧪 Test Commands:
-      # Test main page
-      curl http://{{ domain_name }}/
-      
-      # Test health check
-      curl http://{{ domain_name }}/health
-      
-      # Test your video content
-      curl -I http://{{ domain_name }}/videos/Obi-Wan%20-%20Hello%20there..mp4
-      
-      # Check pod logs
-      kubectl -n {{ app_namespace }} logs -l app={{ app_name }} --tail=20
-
-- name: Show troubleshooting info if pods not ready
-  debug:
-    msg: |
-      🔧 Troubleshooting Commands:
-      
-      # Describe pods for detailed status
-      kubectl -n {{ app_namespace }} describe pods -l app={{ app_name }}
-      
-      # Check recent events
-      kubectl -n {{ app_namespace }} get events --sort-by=.metadata.creationTimestamp | tail -10
-      
-      # Check DaemonSet details
-      kubectl -n {{ app_namespace }} describe daemonset {{ app_name }}
-      
-      # Check ConfigMaps are available
-      kubectl -n {{ app_namespace }} get configmaps
-  when:
-    - daemonset_status.resources[0].status.numberReady | default(0) | int == 0
-    - pod_status.resources | length > 0
-
-- name: Verify DaemonSet deployment success
-  debug:
-    msg: |
-      ✅ HLS Streaming DaemonSet deployment completed!
-      
-      📊 Summary:
-      - DaemonSet: {{ app_name }}
-      - Desired Pods: {{ daemonset_status.resources[0].status.desiredNumberScheduled | default('0') }}
-      - Ready Pods: {{ daemonset_status.resources[0].status.numberReady | default('0') }}
-      - Image: {{ docker_hub_image | default('nginx:alpine') }}:{{ docker_hub_tag | default('latest') }}
-      
-      🎯 Next Steps:
-      1. Test the endpoints listed above
-      2. Deploy storage CSI driver to mount video content
-      3. Verify video streaming works
+      {% if mount_check.rc == 0 %}
+      Mount contents:
+      {{ mount_check.stdout_lines | join('\n') }}
+      {% else %}
+      Mount error: {{ mount_check.stderr | default('Unknown error') }}
+      {% endif %}
