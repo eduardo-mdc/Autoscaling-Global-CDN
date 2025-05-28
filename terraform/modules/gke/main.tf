@@ -1,4 +1,4 @@
-# GKE module - Kubernetes cluster with global HTTP load balancing support (Final Fix)
+# GKE module with Hot/Cold cluster support
 
 # Enable required APIs
 resource "google_project_service" "container_api" {
@@ -14,7 +14,7 @@ resource "google_project_service" "compute_api" {
 # Create GKE cluster
 resource "google_container_cluster" "cluster" {
   name     = "${var.project_name}-gke-${var.region}"
-  location = var.region  # Use regional cluster for high availability
+  location = var.region  # Regional cluster
 
   # Use VPC-native cluster
   networking_mode = "VPC_NATIVE"
@@ -25,7 +25,7 @@ resource "google_container_cluster" "cluster" {
   remove_default_node_pool = true
   initial_node_count       = 1
 
-  # Private cluster configuration - control plane has private IP
+  # Private cluster configuration
   private_cluster_config {
     enable_private_nodes    = true
     enable_private_endpoint = true
@@ -52,7 +52,7 @@ resource "google_container_cluster" "cluster" {
     provider = "CALICO"
   }
 
-  # Binary authorization (optional, for production)
+  # Binary authorization
   binary_authorization {
     evaluation_mode = "DISABLED"
   }
@@ -62,10 +62,10 @@ resource "google_container_cluster" "cluster" {
     workload_pool = "${var.project_id}.svc.id.goog"
   }
 
-  # Cluster addons
+  # Cluster addons - vary by cluster type
   addons_config {
     http_load_balancing {
-      disabled = false  # Enable HTTP load balancing
+      disabled = false
     }
 
     network_policy_config {
@@ -75,42 +75,65 @@ resource "google_container_cluster" "cluster" {
     gcs_fuse_csi_driver_config {
       enabled = true
     }
+
+    # Enable more monitoring for hot clusters
+    dynamic "monitoring_config" {
+      for_each = var.cluster_type == "hot" ? [1] : []
+      content {
+        enable_components = ["SYSTEM_COMPONENTS", "APISERVER", "CONTROLLER_MANAGER", "SCHEDULER"]
+      }
+    }
+
+    # Enable more logging for hot clusters
+    dynamic "logging_config" {
+      for_each = var.cluster_type == "hot" ? [1] : []
+      content {
+        enable_components = ["SYSTEM_COMPONENTS", "WORKLOADS", "APISERVER"]
+      }
+    }
   }
 
-  # Depend on the APIs being enabled
+  # Cluster-level labels for identification
+  resource_labels = {
+    cluster_type = var.cluster_type
+    region       = var.region
+    environment  = "production"
+  }
+
   depends_on = [
     google_project_service.container_api,
     google_project_service.compute_api
   ]
 }
 
-# Create node pool with autoscaling
+# Create node pool with hot/cold-aware autoscaling
 resource "google_container_node_pool" "primary" {
-  name       = "${var.project_name}-node-pool-${var.region}"
+  name       = "${var.project_name}-node-pool-${var.region}-${var.cluster_type}"
   location   = var.region
   cluster    = google_container_cluster.cluster.id
 
-  node_locations = null # Can use any zone in the region
+  # Initial node count - 0 for cold clusters
+  initial_node_count = var.initial_nodes
 
-  # Autoscaling configuration
+  # Autoscaling configuration - different for hot/cold
   autoscaling {
-    total_min_node_count = var.min_nodes
-    total_max_node_count = var.max_nodes
+    total_min_node_count = var.min_nodes  # 0 for cold, 2+ for hot
+    total_max_node_count = var.max_nodes  # Higher limit for hot
 
-    location_policy = "ANY"  # Balanced distribution across zones
+    location_policy = "ANY"  # Distribute across zones
   }
 
-  # Node management
+  # Node management - more aggressive for cold clusters
   management {
     auto_repair  = true
-    auto_upgrade = true
+    auto_upgrade = var.cluster_type == "hot" ? true : false  # Pause upgrades for cold
   }
 
-  # Upgrade settings - add explicit configuration
+  # Upgrade settings
   upgrade_settings {
-    max_surge       = 1
+    max_surge       = var.cluster_type == "hot" ? 2 : 1
     max_unavailable = 0
-    strategy = "SURGE"
+    strategy        = "SURGE"
   }
 
   # Node configuration
@@ -120,14 +143,23 @@ resource "google_container_node_pool" "primary" {
     disk_size_gb = var.node_disk_size_gb
     disk_type    = var.node_disk_type
 
+    # Use spot instances for cold clusters (cheaper than preemptible)
+    spot = var.cluster_type == "cold" ? true : false
+
     # Labels and tags
     labels = {
-      app = var.project_name
+      app          = var.project_name
+      region       = var.region
+      cluster_type = var.cluster_type
     }
 
-    tags = ["${var.project_name}-node", "gke-${var.region}"]
+    tags = [
+      "${var.project_name}-node",
+      "gke-${var.region}",
+      "cluster-${var.cluster_type}"
+    ]
 
-    # OAuth scopes - simplified to standard set
+    # OAuth scopes
     oauth_scopes = [
       "https://www.googleapis.com/auth/cloud-platform"
     ]
@@ -137,26 +169,35 @@ resource "google_container_node_pool" "primary" {
       mode = "GKE_METADATA"
     }
 
-    # Enable shielded nodes for enhanced security
+    # Shielded instance config
     shielded_instance_config {
       enable_secure_boot          = false
       enable_integrity_monitoring = true
     }
 
-
+    # Taint cold cluster nodes to prevent scheduling until needed
+    dynamic "taint" {
+      for_each = var.cluster_type == "cold" ? [1] : []
+      content {
+        key    = "cluster-type"
+        value  = "cold"
+        effect = "NO_SCHEDULE"
+      }
+    }
   }
-  # Lifecycle management - prevent unnecessary node pool updates
+
+  # Lifecycle management
   lifecycle {
     ignore_changes = [
       node_config[0].resource_labels,
-      node_config[0].kubelet_config
+      node_config[0].kubelet_config,
+      initial_node_count
     ]
   }
 
-
-  # Add timeout settings
+  # Timeouts
   timeouts {
-    create = "30m"
+    create = var.cluster_type == "hot" ? "45m" : "30m"
     update = "30m"
     delete = "30m"
   }

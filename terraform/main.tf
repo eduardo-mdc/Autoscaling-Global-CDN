@@ -10,7 +10,7 @@ provider "google-beta" {
   credentials = file(var.credentials_file)
   region      = var.regions[0]
 }
-# Local values for consistent naming and CIDR calculations
+# Local values
 locals {
   region_numbers = {
     for idx, region in var.regions : region => idx + 1
@@ -29,8 +29,9 @@ locals {
     ]
   }
 
-  # Fixed admin CIDR to avoid circular dependency
   admin_cidr = "10.250.0.0/24"
+  hot_regions = toset(var.hot_regions)
+  cold_regions = toset(var.cold_regions)
 }
 
 # ============================================================================
@@ -125,13 +126,16 @@ resource "google_compute_network_peering" "region_to_admin" {
 }
 
 # ============================================================================
-# PHASE 3: KUBERNETES (Depends on networking)
+# PHASE 3: HOT/COLD KUBERNETES CLUSTERS
 # ============================================================================
 
-# 3.1 GKE Clusters (depends on networks)
-module "gke" {
+# Hot GKE Clusters (always active)
+module "gke_hot" {
   source   = "./modules/gke"
-  for_each = local.region_numbers
+  for_each = {
+    for region in var.regions : region => local.region_numbers[region]
+    if contains(var.hot_regions, region)
+  }
 
   project_id        = var.project_id
   project_name      = var.project_name
@@ -139,14 +143,46 @@ module "gke" {
   region_number     = each.value
   network_self_link = module.network[each.key].network_self_link
   subnet_self_link  = module.network[each.key].subnet_self_link
-  admin_cidr        = local.admin_cidr  # Use local value
+  admin_cidr        = local.admin_cidr
 
-  # Node configuration
-  min_nodes         = var.min_nodes
-  max_nodes         = var.max_nodes
-  node_machine_type = var.node_machine_type
-  node_disk_size_gb = var.node_disk_size_gb
-  node_disk_type    = var.node_disk_type
+  initial_nodes     = var.hot_cluster_config.initial_nodes
+  min_nodes         = var.hot_cluster_config.min_nodes
+  max_nodes         = var.hot_cluster_config.max_nodes
+  node_machine_type = var.hot_cluster_config.machine_type
+  node_disk_size_gb = var.hot_cluster_config.disk_size_gb
+  node_disk_type    = var.hot_cluster_config.disk_type
+
+  cluster_type      = "hot"
+  enable_monitoring = true
+  enable_logging    = true
+}
+
+# Cold GKE Clusters (scaled down by default)
+module "gke_cold" {
+  source   = "./modules/gke"
+  for_each = {
+    for region in var.regions : region => local.region_numbers[region]
+    if contains(var.cold_regions, region)
+  }
+
+  project_id        = var.project_id
+  project_name      = var.project_name
+  region            = each.key
+  region_number     = each.value
+  network_self_link = module.network[each.key].network_self_link
+  subnet_self_link  = module.network[each.key].subnet_self_link
+  admin_cidr        = local.admin_cidr
+
+  initial_nodes     = var.cold_cluster_config.initial_nodes  # 0
+  min_nodes         = var.cold_cluster_config.min_nodes      # 0
+  max_nodes         = var.cold_cluster_config.max_nodes      # 5
+  node_machine_type = var.cold_cluster_config.machine_type
+  node_disk_size_gb = var.cold_cluster_config.disk_size_gb
+  node_disk_type    = var.cold_cluster_config.disk_type
+
+  cluster_type      = "cold"
+  enable_monitoring = false
+  enable_logging    = false
 }
 
 # 3.2 Bastion hosts (depends on networks)
@@ -183,4 +219,38 @@ module "loadbalancer" {
   enable_regional_subdomains = var.enable_regional_subdomains
   enable_caa_records        = var.enable_caa_records
   additional_domains        = var.additional_domains
+}
+
+# ============================================================================
+# PHASE 5: COLD CLUSTER SCALING
+# ============================================================================
+
+module "cold_scaling" {
+  count = var.enable_cluster_autoscaling ? 1 : 0
+
+  source = "./modules/cold-scaling"
+
+  project_id   = var.project_id
+  project_name = var.project_name
+
+  hot_regions  = var.hot_regions
+  cold_regions = var.cold_regions
+
+  load_balancer_name = "${var.project_name}-https-lb-rule"
+  scaling_thresholds = var.scale_up_thresholds
+
+  enable_scheduled_scaling   = true
+  scaling_schedule_interval  = 5
+  schedule_timezone         = "UTC"
+  enable_manual_triggers    = true
+  enable_scaling_logs       = true
+
+  function_region      = var.regions[0]
+  function_source_path = "./functions/cold-cluster-scaler.zip"
+
+  depends_on = [
+    module.gke_hot,
+    module.gke_cold,
+    module.loadbalancer
+  ]
 }

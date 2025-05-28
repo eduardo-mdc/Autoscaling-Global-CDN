@@ -199,3 +199,92 @@ variable "admin_allowed_ips" {
     type        = list(string)
     default     = ["0.0.0.0/0"]  # Change this to restrict access in production
 }
+
+# Hot/Cold cluster configuration
+variable "hot_regions" {
+  description = "Regions that should be always active (hot)"
+  type        = list(string)
+  default     = ["europe-west2", "us-south1"]  # EU and Americas
+}
+
+variable "cold_regions" {
+  description = "Regions that should be scaled down by default (cold)"
+  type        = list(string)
+  default     = ["asia-southeast1"]  # APAC
+}
+
+# Hot cluster configuration
+variable "hot_cluster_config" {
+  description = "Configuration for hot clusters"
+  type = object({
+    min_nodes         = number
+    max_nodes         = number
+    initial_nodes     = number
+    machine_type      = string
+    disk_size_gb      = number
+    disk_type         = string
+  })
+  default = {
+    min_nodes         = 1   # Always running
+    max_nodes         = 3   # High scale capacity
+    initial_nodes     = 1   # Start with 1 nodes
+    machine_type      = "e2-standard-2"  # More powerful for active traffic
+    disk_size_gb      = 40
+    disk_type         = "pd-standard"
+  }
+}
+
+# Cold cluster configuration
+variable "cold_cluster_config" {
+  description = "Configuration for cold clusters"
+  type = object({
+    min_nodes         = number
+    max_nodes         = number
+    initial_nodes     = number
+    machine_type      = string
+    disk_size_gb      = number
+    disk_type         = string
+  })
+  default = {
+    min_nodes         = 0    # Scale to zero
+    max_nodes         = 2    # Moderate scale capacity
+    initial_nodes     = 0    # Start with 0 nodes
+    machine_type      = "e2-standard-2"  # Smaller for cost efficiency
+    disk_size_gb      = 40
+    disk_type         = "pd-standard"
+  }
+}
+
+# Auto-scaling behavior
+variable "enable_cluster_autoscaling" {
+  description = "Enable advanced cluster autoscaling"
+  type        = bool
+  default     = true
+}
+
+variable "cold_cluster_scale_up_trigger" {
+  description = "Trigger mechanism for cold cluster scale-up"
+  type        = string
+  default     = "geographic_traffic"  # Options: geographic_traffic, latency_based, manual, scheduled
+}
+
+# Traffic-based scaling thresholds
+variable "scale_up_thresholds" {
+  description = "Thresholds for scaling up cold clusters based on traffic"
+  type = object({
+    asia_requests_per_10min      = number  # Scale up if Asia traffic > this many requests per 10min
+    asia_traffic_percentage      = number  # Scale up if Asia traffic > this % of total
+    latency_threshold_ms         = number  # Scale up if latency to hot clusters > this
+    min_total_requests           = number  # Only scale if total traffic > this threshold
+    scale_down_asia_requests     = number  # Scale down if Asia traffic < this
+    scale_down_latency_ms        = number  # Scale down if latency < this
+  })
+  default = {
+    asia_requests_per_10min      = 50     # 50 requests from Asia in 10 minutes
+    asia_traffic_percentage      = 10     # 10% of total traffic from Asia
+    latency_threshold_ms         = 200    # 500ms latency threshold
+    min_total_requests           = 100    # Need at least 100 total requests
+    scale_down_asia_requests     = 10     # Scale down if < 10 Asia requests
+    scale_down_latency_ms        = 100    # Scale down if latency < 200ms
+  }
+}
