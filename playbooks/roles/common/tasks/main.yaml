@@ -11,7 +11,7 @@
     state: present
 
 - name: Set up timezone
-  timezone:
+  community.general.timezone:
     name: CET
 
 - name: Configure swappiness

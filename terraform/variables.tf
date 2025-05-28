@@ -176,3 +176,20 @@ variable "storage_force_destroy" {
   type        = bool
   default     = false
 }
+
+variable "admin_iap_members" {
+  description = "List of members that can access the admin service via IAP"
+  type        = list(string)
+  default     = ["user:admin@example.com"]
+}
+
+variable "oauth_client_id" {
+  description = "OAuth client ID for IAP"
+  type        = string
+}
+
+variable "oauth_client_secret" {
+  description = "OAuth client secret for IAP"
+  type        = string
+  sensitive   = true
+}

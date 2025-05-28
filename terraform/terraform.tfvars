@@ -5,7 +5,7 @@ ssh_public_key_path = "/home/eduardo-mdc/.ssh/id_rsa.pub"
 admin_username      = "ubuntu"
 min_nodes           = 1
 max_nodes           = 3
-node_machine_type   = "e2-medium" # 2 vCPU, 4GB memory
+node_machine_type   = "e2-standard-2"  # 2 dedicated vCPU, 7.5GB RAM
 node_disk_size_gb   = 40
 node_disk_type      = "pd-standard"
 admin_machine_type  = "e2-standard-2"
@@ -34,3 +34,8 @@ enable_cache_lifecycle          = false # Don't auto-delete cached content
 enable_bucket_notifications     = false # Manual sync for now
 storage_public_access_prevention = "enforced"  # Secure by default
 storage_force_destroy           = true # False -> Protect against accidental deletion
+
+# IAM Configuration
+admin_iap_members = ["user:eduardo.mmd.correia@gmail.com","user:alfilipe.it@gmail.com"]
+oauth_client_id = "313506890289-306orl15c02jl7henbtc5c7ln094b0fa.apps.googleusercontent.com"
+oauth_client_secret = "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"

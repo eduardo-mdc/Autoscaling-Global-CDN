@@ -53,6 +53,11 @@ module "admin" {
 
   # All regions for admin scripts (no module dependencies)
   all_regions = var.regions
+
+  iap_members = var.admin_iap_members
+  oauth_client_id = var.oauth_client_id
+  oauth_client_secret = var.oauth_client_secret
+  domain_name = var.domain_name
 }
 
 # Create storage buckets (can run in parallel with networking)

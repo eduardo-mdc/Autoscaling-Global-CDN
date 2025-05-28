@@ -1,0 +1,42 @@
+<!doctype html>
+<html>
+<head>
+    <title>Content Admin</title>
+    <link rel="stylesheet"
+          href="https://cdn.jsdelivr.net/npm/bootstrap@5/dist/css/bootstrap.min.css">
+</head>
+<body class="p-4">
+<h1>Content Admin</h1>
+    {% with msgs = get_flashed_messages(with_categories=true) %}
+    {% if msgs %}
+    {% for cat, msg in msgs %}
+    <div class="alert alert-{{ cat }}">{{ msg }}</div>
+    {% endfor %}
+    {% endif %}
+    {% endwith %}
+
+    <a href="{{ url_for('upload') }}" class="btn btn-primary mb-3">Upload New Video</a>
+
+    {% if items %}
+    <ul class="list-group">
+        {% for f in items %}
+        <li class="list-group-item d-flex justify-content-between align-items-center">
+            {{ f }}
+            <div>
+                <a href="/videos/{{ f }}/playlist.m3u8"
+                   target="_blank" class="btn btn-sm btn-success">Play</a>
+                <form action="{{ url_for('delete', folder=f) }}"
+                      method="post" style="display:inline;">
+                    <button type="submit" class="btn btn-sm btn-danger">
+                        Delete
+                    </button>
+                </form>
+            </div>
+        </li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <p>No content found.</p>
+    {% endif %}
+</body>
+</html>

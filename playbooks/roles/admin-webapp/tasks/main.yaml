@@ -1,0 +1,81 @@
+---
+- name: Update apt cache
+  apt:
+    update_cache: yes
+
+- name: Add gcsfuse repository
+  shell: |
+    export GCSFUSE_REPO=gcsfuse-{{ ansible_distribution_release }}
+    echo "deb http://packages.cloud.google.com/apt $GCSFUSE_REPO main" | tee /etc/apt/sources.list.d/gcsfuse.list
+    curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key add -
+  args:
+    creates: /etc/apt/sources.list.d/gcsfuse.list
+
+- name: Install system packages (ffmpeg, gcsfuse prerequisites)
+  apt:
+    name:
+      - ffmpeg
+      - python3-pip
+      - gcsfuse
+    state: present
+    update_cache: yes
+
+- name: Create mount directory
+  file:
+    path: "{{ videos_mount_path }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Create gcsfuse systemd service
+  template:
+    src: gcsfuse.service.j2
+    dest: /etc/systemd/system/gcsfuse-{{ gcs_bucket_name }}.service
+    mode: '0644'
+
+- name: Start and enable gcsfuse mount service
+  systemd:
+    name: gcsfuse-{{ gcs_bucket_name }}
+    daemon_reload: yes
+    state: started
+    enabled: yes
+
+- name: Install Python dependencies
+  pip:
+    name:
+      - flask
+      - werkzeug
+    executable: pip3
+
+- name: Create Flask app directory
+  file:
+    path: "{{ flask_app_path }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Deploy Flask app files
+  copy:
+    src: "{{ role_path }}/files/{{ item }}"
+    dest: "{{ flask_app_path }}/{{ item }}"
+    mode: '0755'
+  with_items:
+    - "app.py"
+    - "templates/"
+
+- name: Create systemd service file for Flask application
+  template:
+    src: "flask_service.service.j2"
+    dest: "/etc/systemd/system/{{ flask_service_name }}.service"
+    mode: '0644'
+    owner: root
+    group: root
+
+- name: Reload systemd and restart Flask service
+  systemd:
+    name: "{{ flask_service_name }}"
+    daemon_reload: yes
+    state: restarted
+    enabled: yes

@@ -169,3 +169,4 @@ output "workload_identity_pool" {
   description = "Workload Identity pool for the project"
   value       = "${var.project_id}.svc.id.goog"
 }
+

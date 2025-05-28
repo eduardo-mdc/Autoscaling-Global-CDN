@@ -14,7 +14,7 @@ metadata:
   labels:
     app: {{ app_name }}
 spec:
-  replicas: {{ initial_replicas | default('2') }}
+  replicas: {{ initial_replicas | default('1') }}
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -30,8 +30,8 @@ spec:
       annotations:
         # CRITICAL: Enable GCS FUSE volumes
         gke-gcsfuse/volumes: "true"
-        # Optional: Set ephemeral storage limit
-        gke-gcsfuse/ephemeral-storage-limit: "50Gi"
+        # Reduced ephemeral storage limit for e2-medium nodes
+        gke-gcsfuse/ephemeral-storage-limit: "10Gi"
     spec:
       serviceAccountName: streaming-server-sa
       containers:
@@ -48,11 +48,11 @@ spec:
             requests:
               memory: "{{ app_memory_request }}"
               cpu: "{{ app_cpu_request }}"
-              ephemeral-storage: "5Gi"
+              ephemeral-storage: "1Gi"
             limits:
               memory: "{{ app_memory_limit }}"
               cpu: "{{ app_cpu_limit }}"
-              ephemeral-storage: "50Gi"
+              ephemeral-storage: "10Gi"
           volumeMounts:
             - name: nginx-config
               mountPath: /etc/nginx/nginx.conf

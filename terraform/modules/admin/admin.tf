@@ -76,19 +76,6 @@ resource "google_compute_address" "admin_ip" {
   address_type = "EXTERNAL"
 }
 
-# Create firewall rule for SSH access to admin VM
-resource "google_compute_firewall" "admin_ssh" {
-  name    = "${var.project_name}-admin-ssh"
-  network = google_compute_network.admin_vpc.name
-
-  allow {
-    protocol = "tcp"
-    ports    = ["22"]
-  }
-
-  source_ranges = var.allowed_ssh_ranges
-  target_tags   = ["admin-vm"]
-}
 
 # Calculate master CIDRs based on region numbers
 locals {
@@ -113,4 +100,145 @@ resource "google_compute_firewall" "admin_allow_from_gke_masters" {
 
   target_tags = ["admin-vm"]
   priority = 1000
+}
+
+# Create firewall rule for SSH access to admin VM
+resource "google_compute_firewall" "admin_ssh" {
+  name    = "${var.project_name}-admin-ssh"
+  network = google_compute_network.admin_vpc.name
+
+  allow {
+    protocol = "tcp"
+    ports    = ["22"]
+  }
+
+  source_ranges = var.allowed_ssh_ranges
+  target_tags   = ["admin-vm"]
+}
+
+# Create firewall rule for HTTP/HTTPS access to admin VM
+resource "google_compute_firewall" "admin_https" {
+  name    = "${var.project_name}-admin-https"
+  network = google_compute_network.admin_vpc.name
+
+  allow {
+    protocol = "tcp"
+    ports    = ["80", "443"]
+  }
+
+  # IAP's IP range for TCP forwarding
+  source_ranges = ["0.0.0.0/0"]
+  target_tags   = ["admin-vm"]
+}
+
+# IAP web configuration for admin VM
+resource "google_iap_web_backend_service_iam_binding" "admin_iap_binding" {
+  project = var.project_id
+  web_backend_service = google_compute_backend_service.admin_backend.name
+  role    = "roles/iap.httpsResourceAccessor"
+
+  members = var.iap_members
+}
+
+resource "google_compute_health_check" "admin_health_check" {
+  name               = "${var.project_name}-admin-health-check"
+  check_interval_sec = 5
+  timeout_sec        = 5
+
+  http_health_check {
+    port         = 80
+    request_path = "/"
+  }
+}
+
+# Create backend service for admin VM
+resource "google_compute_backend_service" "admin_backend" {
+  name        = "${var.project_name}-admin-backend"
+  port_name   = "http"
+  protocol    = "HTTP"
+  timeout_sec = 30
+  health_checks = [google_compute_health_check.admin_health_check.id]
+
+  backend {
+    group = google_compute_instance_group.admin_group.self_link
+  }
+
+  iap {
+    oauth2_client_id     = var.oauth_client_id
+    oauth2_client_secret = var.oauth_client_secret
+  }
+}
+
+# Create instance group for admin VM
+resource "google_compute_instance_group" "admin_group" {
+  name      = "${var.project_name}-admin-group"
+  zone      = var.zone
+  instances = [google_compute_instance.admin.self_link]
+
+  # Add named port configuration
+  named_port {
+    name = "http"
+    port = 80
+  }
+}
+
+# Create URL map for admin service
+resource "google_compute_url_map" "admin_url_map" {
+  name            = "${var.project_name}-admin-url-map"
+  default_service = google_compute_backend_service.admin_backend.id
+}
+
+# Create HTTP proxy for admin service
+resource "google_compute_target_http_proxy" "admin_http_proxy" {
+  name    = "${var.project_name}-admin-http-proxy"
+  url_map = google_compute_url_map.admin_url_map.id
+}
+
+# Create global IP address for admin frontend
+resource "google_compute_global_address" "admin_ip" {
+  name         = "${var.project_name}-admin-global-ip"
+  description  = "Global IP for ${var.project_name} admin frontend"
+}
+
+# Create HTTP forwarding rule
+resource "google_compute_global_forwarding_rule" "admin_http" {
+  name       = "${var.project_name}-admin-http-rule"
+  target     = google_compute_target_http_proxy.admin_http_proxy.id
+  port_range = "80"
+  ip_address = google_compute_global_address.admin_ip.address
+}
+
+# Create SSL certificate (self-managed or managed)
+resource "google_compute_managed_ssl_certificate" "admin_cert" {
+  name = "${var.project_name}-admin-cert"
+
+  managed {
+    domains = ["admin.${var.domain_name}"]
+  }
+}
+
+# Create HTTPS proxy with SSL certificate
+resource "google_compute_target_https_proxy" "admin_https_proxy" {
+  name             = "${var.project_name}-admin-https-proxy"
+  url_map          = google_compute_url_map.admin_url_map.id
+  ssl_certificates = [google_compute_managed_ssl_certificate.admin_cert.id]
+}
+
+# Create HTTPS forwarding rule
+resource "google_compute_global_forwarding_rule" "admin_forward_https" {
+  name       = "${var.project_name}-admin-https-rule"
+  target     = google_compute_target_https_proxy.admin_https_proxy.id
+  port_range = "443"
+  ip_address = google_compute_global_address.admin_ip.address
+}
+
+# Create A record for admin subdomain pointing to the global IP
+resource "google_dns_record_set" "admin_record" {
+  name         = "admin.${var.domain_name}."
+  type         = "A"
+  ttl          = 300
+  managed_zone = "${var.project_name}-zone"
+
+
+  rrdatas = [google_compute_global_address.admin_ip.address]
 }

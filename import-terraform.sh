@@ -473,56 +473,56 @@ import_storage_module() {
 #        fi
 #    done
 
-    # Import service accounts
-    local admin_sa="${PROJECT_NAME}-content-admin"
-    local reader_sa="${PROJECT_NAME}-content-reader"
-
-    if resource_exists "service_account" "$admin_sa" "$PROJECT_ID"; then
-        import_resource \
-            "module.storage.google_service_account.content_admin" \
-            "projects/$PROJECT_ID/serviceAccounts/${admin_sa}@${PROJECT_ID}.iam.gserviceaccount.com" \
-            "Content Admin Service Account"
-    fi
-
-    if resource_exists "service_account" "$reader_sa" "$PROJECT_ID"; then
-        import_resource \
-            "module.storage.google_service_account.content_reader" \
-            "projects/$PROJECT_ID/serviceAccounts/${reader_sa}@${PROJECT_ID}.iam.gserviceaccount.com" \
-            "Content Reader Service Account"
-    fi
-
-    # Import custom IAM role
-    local custom_role="${PROJECT_NAME//-/_}_content_sync"
-    if gcloud iam roles describe "$custom_role" --project="$PROJECT_ID" &>/dev/null; then
-        import_resource \
-            "module.storage.google_project_iam_custom_role.content_sync" \
-            "projects/$PROJECT_ID/roles/$custom_role" \
-            "Custom Content Sync Role"
-    fi
-
-    # Import service account keys if they exist
-    print_status "Checking for service account keys..."
-
-    # List keys for admin SA
-    admin_key_id=$(gcloud iam service-accounts keys list --iam-account="${admin_sa}@${PROJECT_ID}.iam.gserviceaccount.com" --format="value(name)" --project="$PROJECT_ID" 2>/dev/null | grep -v "^$" | head -1)
-    if [[ -n "$admin_key_id" ]]; then
-        import_resource \
-            "module.storage.google_service_account_key.content_admin_key" \
-            "$admin_key_id" \
-            "Content Admin Service Account Key"
-    fi
-
-    # List keys for reader SA
-    reader_key_id=$(gcloud iam service-accounts keys list --iam-account="${reader_sa}@${PROJECT_ID}.iam.gserviceaccount.com" --format="value(name)" --project="$PROJECT_ID" 2>/dev/null | grep -v "^$" | head -1)
-    if [[ -n "$reader_key_id" ]]; then
-        import_resource \
-            "module.storage.google_service_account_key.content_reader_key" \
-            "$reader_key_id" \
-            "Content Reader Service Account Key"
-    fi
-
-    print_warning "IAM bindings and policies may need to be recreated"
-    print_warning "Run 'terraform plan' to see what needs to be added"
+#    # Import service accounts
+#    local admin_sa="${PROJECT_NAME}-content-admin"
+#    local reader_sa="${PROJECT_NAME}-content-reader"
+#
+#    if resource_exists "service_account" "$admin_sa" "$PROJECT_ID"; then
+#        import_resource \
+#            "module.storage.google_service_account.content_admin" \
+#            "projects/$PROJECT_ID/serviceAccounts/${admin_sa}@${PROJECT_ID}.iam.gserviceaccount.com" \
+#            "Content Admin Service Account"
+#    fi
+#
+#    if resource_exists "service_account" "$reader_sa" "$PROJECT_ID"; then
+#        import_resource \
+#            "module.storage.google_service_account.content_reader" \
+#            "projects/$PROJECT_ID/serviceAccounts/${reader_sa}@${PROJECT_ID}.iam.gserviceaccount.com" \
+#            "Content Reader Service Account"
+#    fi
+#
+#    # Import custom IAM role
+#    local custom_role="${PROJECT_NAME//-/_}_content_sync"
+#    if gcloud iam roles describe "$custom_role" --project="$PROJECT_ID" &>/dev/null; then
+#        import_resource \
+#            "module.storage.google_project_iam_custom_role.content_sync" \
+#            "projects/$PROJECT_ID/roles/$custom_role" \
+#            "Custom Content Sync Role"
+#    fi
+#
+#    # Import service account keys if they exist
+#    print_status "Checking for service account keys..."
+#
+#    # List keys for admin SA
+#    admin_key_id=$(gcloud iam service-accounts keys list --iam-account="${admin_sa}@${PROJECT_ID}.iam.gserviceaccount.com" --format="value(name)" --project="$PROJECT_ID" 2>/dev/null | grep -v "^$" | head -1)
+#    if [[ -n "$admin_key_id" ]]; then
+#        import_resource \
+#            "module.storage.google_service_account_key.content_admin_key" \
+#            "$admin_key_id" \
+#            "Content Admin Service Account Key"
+#    fi
+#
+#    # List keys for reader SA
+#    reader_key_id=$(gcloud iam service-accounts keys list --iam-account="${reader_sa}@${PROJECT_ID}.iam.gserviceaccount.com" --format="value(name)" --project="$PROJECT_ID" 2>/dev/null | grep -v "^$" | head -1)
+#    if [[ -n "$reader_key_id" ]]; then
+#        import_resource \
+#            "module.storage.google_service_account_key.content_reader_key" \
+#            "$reader_key_id" \
+#            "Content Reader Service Account Key"
+#    fi
+#
+#    print_warning "IAM bindings and policies may need to be recreated"
+#    print_warning "Run 'terraform plan' to see what needs to be added"
 }
 
 # Function to import load balancer module resources

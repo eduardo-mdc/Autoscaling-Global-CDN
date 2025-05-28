@@ -6,10 +6,15 @@
   become: yes
   tags: ['phase1', 'setup']
   roles:
-    - common
-    - { role: gcloud, when: inventory_hostname in groups['admin'] }
-    - { role: content-manager, when: inventory_hostname in groups['admin'] }
-    - { role: bastion, when: inventory_hostname in groups['bastions'] }
+    #- common
+    #- role: gcloud
+    #  when: inventory_hostname in groups['admin']
+    #- role: content-manager
+    #  when: inventory_hostname in groups['admin']
+    - role: admin-webapp
+      when: inventory_hostname in groups['admin']
+    #- role: bastion
+    #  when: inventory_hostname in groups['bastions']
 
 - name: Phase 2 - Deploy Streaming Application
   hosts: bastions
@@ -39,17 +44,22 @@
         name: streaming-server
         tasks_from: deploy-service
 
-    - name: Deploy NEGs to load balancer
+    - name: Deploy Ingress
       include_role:
         name: streaming-server
-        tasks_from: deploy-negs-to-loadbalancer
+        tasks_from: deploy-ingress
+
+#    - name: Deploy NEGs to load balancer
+#      include_role:
+#        name: streaming-server
+#        tasks_from: deploy-negs-to-loadbalancer
 
 - name: Phase 3 - Verification
-  hosts: bastions
+  hosts: bastion-europe-west2
   become: yes
   tags: ['phase3', 'verify']
   tasks:
     - name: Verify deployment
       include_role:
         name: streaming-server
-        tasks_from: verify-deployment-csi
+        tasks_from: verify-deployment

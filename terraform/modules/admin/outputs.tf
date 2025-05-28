@@ -22,3 +22,4 @@ output "admin_subnet_cidr" {
   description = "CIDR range of the admin subnet"
   value       = google_compute_subnetwork.admin_subnet.ip_cidr_range
 }
+

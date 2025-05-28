@@ -2,6 +2,13 @@
 # Deploy ConfigMaps for HLS streaming
 # File: playbooks/roles/streaming-server/tasks/deploy-configmap.yml
 
+- name: Create manifests directory if it doesn't exist
+  file:
+    path: "{{ manifests_dir }}"
+    state: directory
+    mode: '0755'
+  register: dir_creation
+
 - name: Generate HLS nginx configuration
   template:
     src: nginx-hls-config.yaml.j2
