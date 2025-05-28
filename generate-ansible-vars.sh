@@ -257,6 +257,16 @@ create_ansible_vars() {
     local domain_configuration_json
     local deployment_urls_json
     local nameserver_instructions_json
+    # Storage outputs
+    local storage_summary_json
+    local master_bucket_name
+    local regional_bucket_names_json
+    local content_admin_sa_email
+    local content_reader_sa_email
+    local gsutil_sync_commands_json
+    local workload_identity_annotation
+    local csi_driver_config_json
+    local content_management_instructions_json
 
     bastion_internal_ips_json=$(get_terraform_output_json "bastion_internal_ips")
     bastion_ssh_via_admin_json=$(get_terraform_output_json "bastion_ssh_via_admin")
@@ -272,11 +282,22 @@ create_ansible_vars() {
     network_details_json=$(get_terraform_output_json "network_details")
     ssh_key_debug=$(get_terraform_output "ssh_key_debug")
 
+  # Fetch storage outputs
+    storage_summary_json=$(get_terraform_output_json "storage_summary")
+    master_bucket_name=$(get_terraform_output "master_bucket_name")
+    regional_bucket_names_json=$(get_terraform_output_json "regional_bucket_names")
+    content_admin_sa_email=$(get_terraform_output "content_admin_sa_email")
+    content_reader_sa_email=$(get_terraform_output "content_reader_sa_email")
+    gsutil_sync_commands_json=$(get_terraform_output_json "gsutil_sync_commands")
+    workload_identity_annotation=$(get_terraform_output "workload_identity_annotation")
+    csi_driver_config_json=$(get_terraform_output_json "csi_driver_config")
+    content_management_instructions_json=$(get_terraform_output_json "content_management_instructions")
+
     # Get terraform vars (without printing status messages to the file)
     local terraform_vars
     terraform_vars=$(get_terraform_vars)
 
-    # Create the YAML file
+# Create the YAML file
     cat > "$ANSIBLE_VARS_FILE" << EOF
 ---
 # Ansible variables generated from Terraform outputs
@@ -323,6 +344,29 @@ $(json_to_ansible_yaml "$bastion_internal_ips_json" | sed 's/^/  /')
 bastion_ssh_via_admin:
 $(json_to_ansible_yaml "$bastion_ssh_via_admin_json" | sed 's/^/  /')
 
+# Storage Configuration
+storage_summary:
+$(json_to_ansible_yaml "$storage_summary_json" | sed 's/^/  /')
+
+master_bucket_name: "$master_bucket_name"
+
+regional_bucket_names:
+$(json_to_ansible_yaml "$regional_bucket_names_json" | sed 's/^/  /')
+
+content_admin_sa_email: "$content_admin_sa_email"
+content_reader_sa_email: "$content_reader_sa_email"
+
+gsutil_sync_commands:
+$(json_to_ansible_yaml "$gsutil_sync_commands_json" | sed 's/^/  /')
+
+workload_identity_annotation: "$workload_identity_annotation"
+
+csi_driver_config:
+$(json_to_ansible_yaml "$csi_driver_config_json" | sed 's/^/  /')
+
+content_management_instructions:
+$(json_to_ansible_yaml "$content_management_instructions_json" | sed 's/^/  /')
+
 # Ingress Configuration for managed SSL
 ssl_cert_type: "managed"
 domain_name: "$(echo "$domain_configuration_json" | python3 -c "import json, sys; data=json.load(sys.stdin); print(data.get('domain_name', ''))" 2>/dev/null || echo "")"
@@ -330,7 +374,6 @@ domain_name: "$(echo "$domain_configuration_json" | python3 -c "import json, sys
 # Environment (can be overridden per deployment)
 environment: "production"
 EOF
-
     # Clean up temp directory
     rm -rf "$TEMP_DIR"
 

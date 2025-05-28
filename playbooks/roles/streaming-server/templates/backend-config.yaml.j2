@@ -28,3 +28,43 @@ spec:
   # Session affinity (disabled for free load balancing as requested)
   sessionAffinity:
     affinityType: "NONE"
+
+  # Custom request headers for streaming optimization
+  customRequestHeaders:
+    headers:
+      - "X-Real-IP: {client_ip_address}"
+      - "X-Streaming-Server: {{ app_name }}"
+
+
+---
+# Separate BackendConfig for metrics endpoint (if needed)
+apiVersion: cloud.google.com/v1
+kind: BackendConfig
+metadata:
+  name: {{ project_name }}-metrics-backend-config
+  namespace: {{ app_namespace }}
+  labels:
+    app: {{ app_name }}
+    created-by: ansible
+    config-type: metrics
+spec:
+  # Metrics-specific health check (optional)
+  healthCheck:
+    checkIntervalSec: 30
+    timeoutSec: 10
+    healthyThreshold: 1
+    unhealthyThreshold: 3
+    type: HTTP
+    requestPath: "/metrics"
+    port: {{ metrics_port | default('9090') }}
+
+  # Shorter timeout for metrics
+  timeoutSec: 30
+
+  # No caching for metrics
+  cdn:
+    enabled: false
+
+  # Session affinity not needed for metrics
+  sessionAffinity:
+    affinityType: "NONE"

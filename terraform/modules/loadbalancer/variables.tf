@@ -1,3 +1,5 @@
+# terraform/modules/loadbalancer/variables.tf - Simplified Variables
+
 variable "project_id" {
   description = "GCP Project ID"
   type        = string
@@ -13,27 +15,10 @@ variable "regions" {
   type        = list(string)
 }
 
-variable "backend_services" {
-  description = "Map of backend service groups (typically GKE ingress NEGs)"
-  type        = list(string)
-}
-
-variable "regional_backend_services" {
-  description = "Map of regional backend services"
-  type        = map(string)
-  default     = {}
-}
-
-variable "ssl_certificate" {
-  description = "Self-link to SSL certificate for HTTPS (optional)"
-  type        = string
-  default     = ""
-}
-
 variable "domain_name" {
   description = "Domain name to use for global load balancing (e.g., example.com). Leave empty to skip domain setup."
   type        = string
-  default     = "" # Empty string means no domain will be created
+  default     = ""
 }
 
 variable "enable_regional_subdomains" {

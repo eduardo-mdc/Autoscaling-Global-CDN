@@ -1,0 +1,4 @@
+# playbooks/roles/content-manager/defaults/main.yaml
+# Default variables for content management
+---
+cold_autoscaler_dir: "/opt/scripts/cold-autoscaler"

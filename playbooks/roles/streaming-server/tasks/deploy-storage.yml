@@ -1,0 +1,189 @@
+---
+# Deploy GCS storage components (StorageClass, PV, PVC)
+# File: playbooks/roles/streaming-server/tasks/deploy-storage.yml
+
+- name: Ensure app_name is set
+  set_fact:
+    app_name: "streaming-server"
+
+- name: Ensure app_namespace is set
+  set_fact:
+    app_namespace: "streaming"
+
+- name: Set manifest directory
+  set_fact:
+    manifests_dir: "/opt/k8s-manifests/streaming-server"
+
+- name: Get current region from bastion hostname (robust method)
+  shell: "hostname | grep -o 'bastion-[a-z0-9-]*' | cut -d'-' -f2-"
+  register: current_region
+
+- name: Validate region extraction
+  debug:
+    msg: |
+      🔍 Region extraction:
+      - Hostname: {{ ansible_hostname }}
+      - Extracted region: "{{ current_region.stdout }}"
+      - Region length: {{ current_region.stdout | length }}
+
+- name: Fail if region could not be extracted
+  fail:
+    msg: "Could not extract region from hostname: {{ ansible_hostname }}"
+  when: current_region.stdout == "" or current_region.stdout == "unknown"
+
+- name: Set bastion region fact
+  set_fact:
+    bastion_region: "{{ current_region.stdout }}"
+
+- name: Debug regional bucket names variable
+  debug:
+    msg: |
+      🔍 Debugging variable access:
+      - bastion_region: "{{ bastion_region }}"
+      - regional_bucket_names type: {{ regional_bucket_names | type_debug }}
+      - regional_bucket_names content: {{ regional_bucket_names }}
+      - Available keys: {{ regional_bucket_names.keys() | list if regional_bucket_names is mapping else 'Not a mapping' }}
+
+- name: Set current bucket name with safer fallback
+  set_fact:
+    current_bucket_name: >-
+      {%- if regional_bucket_names is defined and regional_bucket_names is mapping -%}
+        {%- if bastion_region in regional_bucket_names -%}
+          {{ regional_bucket_names[bastion_region] }}
+        {%- else -%}
+          {{ project_name }}-content-{{ bastion_region }}
+        {%- endif -%}
+      {%- else -%}
+        {{ project_name }}-content-{{ bastion_region }}
+      {%- endif -%}
+
+- name: Display storage deployment info
+  debug:
+    msg: |
+      💾 Deploying GCS storage components for region: {{ bastion_region }}
+      📦 Regional bucket: {{ current_bucket_name }}
+      🔐 Service account: {{ content_reader_sa_email | default('content-reader-sa@' + project_id + '.iam.gserviceaccount.com') }}
+
+- name: Create storage manifests directory
+  file:
+    path: "{{ manifests_dir }}/storage"
+    state: directory
+    mode: '0755'
+
+- name: Generate GCS StorageClass manifest
+  template:
+    src: gcs-storage-class.yaml.j2
+    dest: "{{ manifests_dir }}/storage/gcs-storage-class.yaml"
+  vars:
+    # Ensure these variables are available to the template
+    bastion_region: "{{ bastion_region }}"
+    current_bucket_name: "{{ current_bucket_name }}"
+    app_name: "{{ app_name }}"
+    content_reader_sa_email: "{{ content_reader_sa_email }}"
+
+- name: Debug generated StorageClass manifest content
+  shell: "head -10 {{ manifests_dir }}/storage/gcs-storage-class.yaml"
+  register: storageclass_content
+
+- name: Display StorageClass manifest preview
+  debug:
+    msg: |
+      📋 Generated StorageClass manifest preview:
+      {{ storageclass_content.stdout_lines | join('\n') }}
+
+- name: Generate GCS PersistentVolume manifest
+  template:
+    src: gcs-persistent-volume.yaml.j2
+    dest: "{{ manifests_dir }}/storage/gcs-persistent-volume.yaml"
+  vars:
+    bastion_region: "{{ bastion_region }}"
+    current_bucket_name: "{{ current_bucket_name }}"
+    app_name: "{{ app_name }}"
+    content_reader_sa_email: "{{ content_reader_sa_email }}"
+
+- name: Generate GCS PersistentVolumeClaim manifest
+  template:
+    src: gcs-persistent-volume-claim.yaml.j2
+    dest: "{{ manifests_dir }}/storage/gcs-persistent-volume-claim.yaml"
+  vars:
+    bastion_region: "{{ bastion_region }}"
+    current_bucket_name: "{{ current_bucket_name }}"
+    app_name: "{{ app_name }}"
+    app_namespace: "{{ app_namespace }}"
+
+- name: Apply GCS StorageClass
+  k8s:
+    state: present
+    src: "{{ manifests_dir }}/storage/gcs-storage-class.yaml"
+    wait: true
+    wait_timeout: 60
+
+- name: Apply GCS PersistentVolume
+  k8s:
+    state: present
+    src: "{{ manifests_dir }}/storage/gcs-persistent-volume.yaml"
+    wait: true
+    wait_timeout: 60
+
+- name: Apply GCS PersistentVolumeClaim
+  k8s:
+    state: present
+    src: "{{ manifests_dir }}/storage/gcs-persistent-volume-claim.yaml"
+    wait: true
+    wait_timeout: 120
+
+- name: Wait for PVC to be bound
+  shell: |
+    kubectl get pvc gcs-videos-pvc -n {{ app_namespace }} -o jsonpath='{.status.phase}'
+  register: pvc_status
+  until: pvc_status.stdout == "Bound"
+  retries: 12
+  delay: 10
+
+- name: Get storage components status
+  shell: |
+    echo "=== StorageClass ==="
+    kubectl get storageclass gcs-fuse-{{ bastion_region }}
+    echo
+    echo "=== PersistentVolume ==="
+    kubectl get pv gcs-videos-pv-{{ bastion_region }}
+    echo
+    echo "=== PersistentVolumeClaim ==="
+    kubectl get pvc gcs-videos-pvc -n {{ app_namespace }}
+  register: storage_status
+
+- name: Display storage deployment status
+  debug:
+    msg: |
+      💾 GCS Storage Deployment Status for {{ bastion_region }}:
+      
+      {{ storage_status.stdout_lines | join('\n') }}
+      
+      ✅ Storage components ready for pod mounting
+      📦 Regional bucket: {{ current_bucket_name }}
+      🔗 PVC name: gcs-videos-pvc
+      📁 Mount path will be: /mnt/videos (read-only)
+
+- name: Verify PVC is bound correctly
+  k8s_info:
+    api_version: v1
+    kind: PersistentVolumeClaim
+    name: gcs-videos-pvc
+    namespace: "{{ app_namespace }}"
+  register: pvc_info
+
+- name: Display PVC binding details
+  debug:
+    msg: |
+      🔍 PVC Binding Details:
+      - Status: {{ pvc_info.resources[0].status.phase }}
+      - Volume: {{ pvc_info.resources[0].spec.volumeName | default('Not bound') }}
+      - Capacity: {{ pvc_info.resources[0].status.capacity.storage | default('Unknown') }}
+      - Access Modes: {{ pvc_info.resources[0].status.accessModes | default([]) | join(', ') }}
+
+- name: Check if storage is ready for pod deployment
+  assert:
+    that:
+      - pvc_info.resources[0].status.phase == "Bound"
+    fail_msg: "PVC is not bound - storage not ready for pod deployment"
+    success_msg: "✅ Storage is ready - pods can now mount the GCS bucket"

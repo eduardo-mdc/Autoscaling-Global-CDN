@@ -1,0 +1,14 @@
+[Unit]
+Description=Flask Admin Web Application
+After=network.target
+
+[Service]
+User=root
+WorkingDirectory={{ flask_app_path }}
+ExecStart=/usr/bin/python3 {{ flask_app_path }}/app.py
+Restart=always
+Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+Environment="FLASK_ENV=production"
+
+[Install]
+WantedBy=multi-user.target

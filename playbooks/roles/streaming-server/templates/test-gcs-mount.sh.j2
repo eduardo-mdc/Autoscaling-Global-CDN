@@ -1,0 +1,234 @@
+#!/bin/bash
+# Test GCS FUSE mount functionality
+# File: playbooks/roles/streaming-server/templates/test-gcs-mount.sh.j2
+
+set -euo pipefail
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'
+
+NAMESPACE="{{ app_namespace }}"
+APP_NAME="{{ app_name }}"
+REGION="{{ bastion_region }}"
+BUCKET_NAME="{{ current_bucket_name | default(project_name + '-content-' + bastion_region) }}"
+
+print_header() {
+    echo -e "${BLUE}==========================================${NC}"
+    echo -e "${BLUE}    GCS FUSE Mount Test - ${REGION}        ${NC}"
+    echo -e "${BLUE}==========================================${NC}"
+    echo
+}
+
+print_status() {
+    echo -e "${GREEN}[INFO]${NC} $1"
+}
+
+print_warning() {
+    echo -e "${YELLOW}[WARN]${NC} $1"
+}
+
+print_error() {
+    echo -e "${RED}[ERROR]${NC} $1"
+}
+
+test_storage_components() {
+    print_status "Testing storage components..."
+
+    echo "📦 StorageClass:"
+    kubectl get storageclass gcs-fuse-${REGION} -o wide || {
+        print_error "StorageClass not found"
+        return 1
+    }
+
+    echo
+    echo "💾 PersistentVolume:"
+    kubectl get pv gcs-videos-pv-${REGION} -o wide || {
+        print_error "PersistentVolume not found"
+        return 1
+    }
+
+    echo
+    echo "🎯 PersistentVolumeClaim:"
+    kubectl get pvc gcs-videos-pvc -n ${NAMESPACE} -o wide || {
+        print_error "PersistentVolumeClaim not found"
+        return 1
+    }
+
+    # Check if PVC is bound
+    PVC_STATUS=$(kubectl get pvc gcs-videos-pvc -n ${NAMESPACE} -o jsonpath='{.status.phase}')
+    if [[ "$PVC_STATUS" != "Bound" ]]; then
+        print_error "PVC is not bound (status: $PVC_STATUS)"
+        return 1
+    fi
+
+    print_status "✅ All storage components are healthy"
+    return 0
+}
+
+test_csi_driver() {
+    print_status "Testing CSI driver..."
+
+    # Check if CSI driver pods are running
+    CSI_PODS=$(kubectl get pods -n gcs-fuse-csi-driver -l app=gcs-fuse-csi-driver --field-selector=status.phase=Running --no-headers | wc -l)
+
+    if [[ $CSI_PODS -eq 0 ]]; then
+        print_error "No CSI driver pods are running"
+        return 1
+    fi
+
+    print_status "✅ CSI driver is running ($CSI_PODS pods)"
+    return 0
+}
+
+test_workload_identity() {
+    print_status "Testing Workload Identity..."
+
+    # Check if ServiceAccount exists and has the right annotation
+    SA_EXISTS=$(kubectl get sa ${APP_NAME}-sa -n ${NAMESPACE} --no-headers 2>/dev/null | wc -l)
+    if [[ $SA_EXISTS -eq 0 ]]; then
+        print_error "ServiceAccount ${APP_NAME}-sa not found"
+        return 1
+    fi
+
+    # Check Workload Identity annotation
+    WI_ANNOTATION=$(kubectl get sa ${APP_NAME}-sa -n ${NAMESPACE} -o jsonpath='{.metadata.annotations.iam\.gke\.io/gcp-service-account}' 2>/dev/null || echo "")
+    if [[ -z "$WI_ANNOTATION" ]]; then
+        print_error "Workload Identity annotation missing"
+        return 1
+    fi
+
+    print_status "✅ Workload Identity configured: $WI_ANNOTATION"
+    return 0
+}
+
+test_pod_mount() {
+    print_status "Testing pod mount..."
+
+    # Get a pod name
+    POD_NAME=$(kubectl get pods -n ${NAMESPACE} -l app=${APP_NAME} -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
+
+    if [[ -z "$POD_NAME" ]]; then
+        print_warning "No ${APP_NAME} pods found - mount test skipped"
+        return 0
+    fi
+
+    print_status "Testing mount in pod: $POD_NAME"
+
+    # Check if mount point exists
+    echo "📁 Checking mount point..."
+    if kubectl exec -n ${NAMESPACE} ${POD_NAME} -- ls -la /mnt/videos/ >/dev/null 2>&1; then
+        print_status "✅ Mount point accessible"
+
+        # List content
+        echo
+        echo "📋 Content in /mnt/videos/:"
+        kubectl exec -n ${NAMESPACE} ${POD_NAME} -- ls -la /mnt/videos/ 2>/dev/null | head -10 || {
+            print_warning "Mount point empty or inaccessible"
+        }
+
+        # Check mount details
+        echo
+        echo "🔍 Mount details:"
+        kubectl exec -n ${NAMESPACE} ${POD_NAME} -- df -h /mnt/videos/ 2>/dev/null || {
+            print_warning "Could not get mount details"
+        }
+
+    else
+        print_error "Mount point not accessible in pod"
+        return 1
+    fi
+
+    return 0
+}
+
+test_content_access() {
+    print_status "Testing content access..."
+
+    # Test via nginx
+    echo "🌐 Testing web access to /videos/ endpoint..."
+    POD_NAME=$(kubectl get pods -n ${NAMESPACE} -l app=${APP_NAME} -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
+
+    if [[ -n "$POD_NAME" ]]; then
+        # Test if nginx can serve content from /mnt/videos
+        if kubectl exec -n ${NAMESPACE} ${POD_NAME} -- curl -s -o /dev/null -w "%{http_code}" http://localhost/videos/ | grep -q "200\|403"; then
+            print_status "✅ Nginx can access videos endpoint"
+        else
+            print_warning "Nginx videos endpoint not ready (this is normal if no content uploaded yet)"
+        fi
+    fi
+}
+
+run_comprehensive_test() {
+    print_header
+
+    print_status "Running comprehensive GCS FUSE mount test..."
+    echo
+
+    # Test all components
+    test_csi_driver || exit 1
+    echo
+
+    test_storage_components || exit 1
+    echo
+
+    test_workload_identity || exit 1
+    echo
+
+    test_pod_mount || exit 1
+    echo
+
+    test_content_access
+    echo
+
+    print_status "🎉 GCS FUSE mount test completed!"
+    echo
+
+    echo -e "${BLUE}📋 Summary for region ${REGION}:${NC}"
+    echo "  📦 Bucket: gs://${BUCKET_NAME}"
+    echo "  📁 Mount: /mnt/videos (in pods)"
+    echo "  🌐 Web access: https://{{ domain_name }}/videos/"
+    echo
+    echo -e "${BLUE}🚀 Next steps:${NC}"
+    echo "  1. Upload content: /opt/content/scripts/sync-all-content.sh"
+    echo "  2. Test access: curl https://{{ domain_name }}/videos/"
+    echo "  3. Monitor: kubectl logs -f -n ${NAMESPACE} -l app=${APP_NAME}"
+}
+
+# Main execution
+case "${1:-test}" in
+    --storage|-s)
+        test_storage_components
+        ;;
+    --csi|-c)
+        test_csi_driver
+        ;;
+    --workload-identity|-w)
+        test_workload_identity
+        ;;
+    --pod|-p)
+        test_pod_mount
+        ;;
+    --content|-o)
+        test_content_access
+        ;;
+    --help|-h)
+        echo "Usage: $0 [OPTIONS]"
+        echo
+        echo "Options:"
+        echo "  --storage, -s           Test storage components only"
+        echo "  --csi, -c              Test CSI driver only"
+        echo "  --workload-identity, -w Test Workload Identity only"
+        echo "  --pod, -p              Test pod mount only"
+        echo "  --content, -o          Test content access only"
+        echo "  --help, -h             Show this help"
+        echo
+        echo "Default: Run comprehensive test"
+        ;;
+    *)
+        run_comprehensive_test
+        ;;
+esac

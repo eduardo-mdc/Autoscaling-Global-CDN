@@ -1,0 +1,15 @@
+[Unit]
+Description=Mount Google Cloud Storage Bucket {{ gcs_bucket_name }} using gcsfuse
+After=network-online.target google-cloud-sdk.target
+Wants=network-online.target
+
+[Service]
+User=root
+Group=root
+ExecStart=/usr/bin/gcsfuse --foreground -o allow_other,rw {{ gcs_bucket_name }} {{ videos_mount_path }}
+ExecStop=/bin/fusermount -u {{ videos_mount_path }}
+Restart=on-failure
+Type=simple
+
+[Install]
+WantedBy=multi-user.target

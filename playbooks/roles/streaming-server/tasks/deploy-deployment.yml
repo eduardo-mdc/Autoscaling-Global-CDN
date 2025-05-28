@@ -1,0 +1,62 @@
+---
+# Deploy streaming server with CSI ephemeral volume
+
+- name: Get current region from bastion hostname
+  shell: "hostname | grep -o 'bastion-[a-z0-9-]*' | cut -d'-' -f2-"
+  register: current_region
+
+- name: Set bastion region fact
+  set_fact:
+    bastion_region: "{{ current_region.stdout }}"
+
+- name: Verify CSI driver is available
+  shell: "kubectl get csidriver gcsfuse.csi.storage.gke.io"
+  register: csi_check
+  failed_when: csi_check.rc != 0
+
+- name: Display CSI driver status
+  debug:
+    msg: "CSI driver available: {{ csi_check.rc == 0 }}"
+
+- name: Create ServiceAccount and Deployment manifest
+  template:
+    src: streaming-deployment-csi.yaml.j2
+    dest: "{{ manifests_dir }}/streaming-deployment.yaml"
+
+- name: Apply streaming deployment
+  k8s:
+    state: present
+    src: "{{ manifests_dir }}/streaming-deployment.yaml"
+    wait: true
+    wait_timeout: 300
+
+- name: Wait for pods to be ready
+  shell: |
+    kubectl wait --for=condition=ready pod \
+      -l app={{ app_name }} \
+      -n {{ app_namespace }} \
+      --timeout=300s
+  register: wait_result
+
+- name: Verify GCS mount in pods
+  shell: |
+    POD=$(kubectl get pod -n {{ app_namespace }} -l app={{ app_name }} -o jsonpath='{.items[0].metadata.name}')
+    kubectl exec -n {{ app_namespace }} $POD -- ls -la /mnt/videos/
+  register: mount_check
+  ignore_errors: yes
+
+- name: Display deployment status
+  debug:
+    msg: |
+      Deployment Status:
+      - Region: {{ bastion_region }}
+      - Bucket: {{ regional_bucket_names[bastion_region] }}
+      - Service Account: {{ content_reader_sa_email }}
+      - Mount Check: {{ 'SUCCESS' if mount_check.rc == 0 else 'FAILED' }}
+      
+      {% if mount_check.rc == 0 %}
+      Mount contents:
+      {{ mount_check.stdout_lines | join('\n') }}
+      {% else %}
+      Mount error: {{ mount_check.stderr | default('Unknown error') }}
+      {% endif %}

@@ -1,0 +1,20 @@
+- name: Create script directory
+  file:
+    path: "{{ cold_autoscaler_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Deploy Cold Autoscaler script
+  copy:
+    src: "{{ role_path }}/files/main.py"
+    dest: "{{ cold_autoscaler_dir }}/app.py"
+    mode: '0755'
+
+- name: Set up cron job to run cold autoscaler every 5 minutes with logging
+  cron:
+    name: "cold autoscaler"
+    minute: "*/5"
+    job: "/usr/bin/python3 {{ cold_autoscaler_dir }}/app.py >> {{ cold_autoscaler_dir }}/autoscaler.log 2>&1; if [ $(stat -c%s {{ cold_autoscaler_dir }}/autoscaler.log) -gt 104857600 ]; then tail -n 5000 {{ cold_autoscaler_dir }}/autoscaler.log > {{ cold_autoscaler_dir }}/autoscaler.log.tmp && mv {{ cold_autoscaler_dir }}/autoscaler.log.tmp {{ cold_autoscaler_dir }}/autoscaler.log; fi"
+    user: root

@@ -1,0 +1,169 @@
+---
+config:
+  theme: redux
+  look: handDrawn
+  layout: elk
+---
+flowchart TB
+    subgraph subGraph0["🌍 Global Infrastructure"]
+        Users["🌐 Global Users<br>(Europe, Americas, APAC)"]
+        GLB["🔄 Global HTTPS Load Balancer<br>IP: Static Global IP<br>SSL: Managed Certificate<br>Domain: adm-cdn.pt"]
+        DNS["🌐 Cloud DNS Zone<br>adm-cdn.pt<br>DNSSEC Enabled"]
+    end
+    subgraph subGraph1["🔧 Admin Infrastructure - 10.250.0.0/24"]
+        AdminVM["🖥️ Admin VM<br>Public IP: X.X.X.X<br>Private IP: 10.250.0.10<br>Type: e2-standard-2<br>Services: gcloud, kubectl"]
+        AdminLB["⚖️ Admin Webapp LB<br>admin.adm-cdn.pt<br>Flask App + GCS Mount"]
+        ContentMgr["📦 Content Manager<br>Master Bucket: EU<br>Sync Scripts"]
+        ScaleFunc["🤖 Cold Scaler Function<br>Triggers: Geographic Traffic<br>Latency Threshold<br>Scheduled Checks<br>Uses: gcloud CLI"]
+    end
+    subgraph subGraph5["📹 Streaming Pods EU - Auto-scaling (2-5)"]
+        PodEU1["📹 Streaming Pod 1<br>Deployment<br>nginx + GCS CSI<br>Ready"]
+        PodEU2["📹 Streaming Pod 2<br>Deployment<br>nginx + GCS CSI<br>Ready"]
+        PodEUN["📹 ... Pod N<br>Auto-scaled<br>Based on traffic"]
+    end
+    subgraph subGraph4["🔥 HOT GKE Cluster EU"]
+        MasterEU["🎛️ Control Plane EU<br>172.16.1.0/28<br>Private Endpoint<br>Workload Identity"]
+        NodePoolEU["⚙️ Hot Node Pool<br>e2-standard-2<br>Min: 2, Max: 5<br>Always Running"]
+        subGraph5
+        IngressEU["🔗 Ingress Controller<br>NEG-only Mode<br>No Public IP"]
+        ServiceEU["⚖️ K8s Service<br>NodePort<br>NEG Annotations"]
+        NEGEU["🎯 Network Endpoint Group<br>Zone: europe-west2-a/b/c<br>Status: Healthy"]
+    end
+    subgraph subGraph3["VPC-EU - 10.1.0.0/20"]
+        BastionEU["🔧 Bastion Host EU<br>10.1.x.x<br>Private Only<br>kubectl access"]
+        subGraph4
+        StorageEU["🗄️ Regional Storage<br>Bucket: EU Cache<br>GCS FUSE CSI Mount"]
+    end
+    subgraph subGraph2["🔥 HOT REGION: Europe West2 - ALWAYS ACTIVE"]
+        subGraph3
+    end
+    subgraph subGraph9["📹 Streaming Pods US - Auto-scaling (2-5)"]
+        PodUS1["📹 Streaming Pod 1<br>Deployment<br>nginx + GCS CSI<br>Ready"]
+        PodUS2["📹 Streaming Pod 2<br>Deployment<br>nginx + GCS CSI<br>Ready"]
+        PodUSN["📹 ... Pod N<br>Auto-scaled<br>Based on traffic"]
+    end
+    subgraph subGraph8["🔥 HOT GKE Cluster US"]
+        MasterUS["🎛️ Control Plane US<br>172.16.2.0/28<br>Private Endpoint<br>Workload Identity"]
+        NodePoolUS["⚙️ Hot Node Pool<br>e2-standard-2<br>Min: 2, Max: 5<br>Always Running"]
+        subGraph9
+        IngressUS["🔗 Ingress Controller<br>NEG-only Mode<br>No Public IP"]
+        ServiceUS["⚖️ K8s Service<br>NodePort<br>NEG Annotations"]
+        NEGUS["🎯 Network Endpoint Group<br>Zone: us-south1-a/b/c<br>Status: Healthy"]
+    end
+    subgraph subGraph7["VPC-US - 10.2.0.0/20"]
+        BastionUS["🔧 Bastion Host US<br>10.2.x.x<br>Private Only<br>kubectl access"]
+        subGraph8
+        StorageUS["🗄️ Regional Storage<br>Bucket: US Cache<br>GCS FUSE CSI Mount"]
+    end
+    subgraph subGraph6["🔥 HOT REGION: US South1 - ALWAYS ACTIVE"]
+        subGraph7
+    end
+    subgraph subGraph13["📹 Streaming Pods ASIA - Traffic-based Scaling (0-3)"]
+        PodASIA1["💤 Pod 1<br>Deployment<br>nginx + GCS CSI<br>⚠️ Not Ready<br>Scale: 0"]
+        ScaleFunc["🤖 Cold Scaler Function<br>Triggers: Geographic Traffic<br>Latency Threshold<br>Scheduled Checks"]
+    end
+    subgraph subGraph12["❄️ COLD GKE Cluster ASIA"]
+        MasterASIA["🎛️ Control Plane ASIA<br>172.16.3.0/28<br>Private Endpoint<br>Workload Identity"]
+        NodePoolASIA["⚙️ Cold Node Pool<br>e2-standard-2<br>Min: 0, Max: 3<br>🔽 SCALED DOWN"]
+        subGraph13
+        IngressASIA["🔗 Ingress Controller<br>NEG-only Mode<br>No Public IP<br>⚠️ No Backends"]
+        ServiceASIA["⚖️ K8s Service<br>NodePort<br>NEG Annotations<br>⚠️ No Endpoints"]
+        NEGASIA["🎯 Network Endpoint Group<br>Zone: asia-southeast1-a/b/c<br>❌ No Healthy Backends"]
+    end
+    subgraph subGraph11["VPC-ASIA - 10.3.0.0/20"]
+        BastionASIA["🔧 Bastion Host ASIA<br>10.3.x.x<br>Private Only<br>kubectl access"]
+        subGraph12
+        StorageASIA["🗄️ Regional Storage<br>Bucket: ASIA Cache<br>GCS FUSE CSI Mount"]
+    end
+    subgraph subGraph10["❄️ COLD REGION: Asia Southeast1 - SCALE-TO-ZERO"]
+        subGraph11
+    end
+    subgraph subGraph14["📊 Storage & Content Distribution"]
+        MasterBucket["🗄️ Master Bucket<br>Location: EU Multi-region<br>Content Ingestion<br>Versioning: Off"]
+        RegionalBucketsEU["🗄️ EU Cache Bucket<br>europe-west2<br>Synced from Master"]
+        RegionalBucketsUS["🗄️ US Cache Bucket<br>us-south1<br>Synced from Master"]
+        RegionalBucketsASIA["🗄️ ASIA Cache Bucket<br>asia-southeast1<br>Synced from Master"]
+    end
+    Users --> DNS
+    DNS --> GLB
+    GLB --> NEGEU & NEGUS & NEGASIA
+    NEGEU --> IngressEU
+    NEGUS --> IngressUS
+    NEGASIA --> IngressASIA
+    IngressEU --> ServiceEU
+    IngressUS --> ServiceUS
+    IngressASIA --> ServiceASIA
+    ServiceEU --> PodEU1 & PodEU2 & PodEUN
+    ServiceUS --> PodUS1 & PodUS2 & PodUSN
+    ServiceASIA -. No Healthy Endpoints .-> PodASIA1
+    AdminVM --> AdminLB
+    AdminVM -. VPC Peering<br>SSH Tunnel .-> BastionEU & BastionUS & BastionASIA
+    BastionEU -. kubectl<br>Authorized Networks .-> MasterEU
+    BastionUS -. kubectl<br>Authorized Networks .-> MasterUS
+    BastionASIA -. kubectl<br>Authorized Networks .-> MasterASIA
+    MasterEU -. Node Management .-> NodePoolEU
+    MasterUS -. Node Management .-> NodePoolUS
+    MasterASIA -. Node Management .-> NodePoolASIA
+    NodePoolEU -. Pod Scheduling .-> PodEU1 & PodEU2 & PodEUN
+    NodePoolUS -. Pod Scheduling .-> PodUS1 & PodUS2 & PodUSN
+    NodePoolASIA -. Cold Scaling .-> PodASIA1
+    ContentMgr --> MasterBucket
+    MasterBucket --> RegionalBucketsEU & RegionalBucketsUS & RegionalBucketsASIA
+    RegionalBucketsEU --> StorageEU
+    RegionalBucketsUS --> StorageUS
+    RegionalBucketsASIA --> StorageASIA
+    StorageEU --> PodEU1 & PodEU2 & PodEUN
+    StorageUS --> PodUS1 & PodUS2 & PodUSN
+    StorageASIA -. Mount Ready .-> PodASIA1
+    ScaleFunc -. Monitor Traffic<br>Geographic Analysis .-> GLB
+    ScaleFunc -. gcloud container clusters resize<br>Asia Traffic > 10%<br> Asia Latency > 500ms<br> Asia Requests 10 Min > 50 .-> NodePoolASIA
+    AdminVM -. Hosts Scaler .-> ScaleFunc
+    Users:::public
+    GLB:::public
+    DNS:::public
+    AdminVM:::admin
+    AdminLB:::admin
+    ContentMgr:::admin
+    PodEU1:::hotStreaming
+    PodEU2:::hotStreaming
+    PodEUN:::hotStreaming
+    MasterEU:::private
+    NodePoolEU:::hotInfra
+    IngressEU:::public
+    ServiceEU:::public
+    NEGEU:::public
+    BastionEU:::private
+    StorageEU:::storage
+    PodUS1:::hotStreaming
+    PodUS2:::hotStreaming
+    PodUSN:::hotStreaming
+    MasterUS:::private
+    NodePoolUS:::hotInfra
+    IngressUS:::public
+    ServiceUS:::public
+    NEGUS:::public
+    BastionUS:::private
+    StorageUS:::storage
+    PodASIA1:::coldStreaming
+    ScaleFunc:::scaling
+    MasterASIA:::private
+    NodePoolASIA:::coldInfra
+    IngressASIA:::coldPublic
+    ServiceASIA:::coldPublic
+    NEGASIA:::coldPublic
+    BastionASIA:::private
+    StorageASIA:::storage
+    MasterBucket:::storage
+    RegionalBucketsEU:::storage
+    RegionalBucketsUS:::storage
+    RegionalBucketsASIA:::storage
+    classDef public fill:#e1f5fe,stroke:#01579b,stroke-width:2px
+    classDef private fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+    classDef hotStreaming fill:#ffebee,stroke:#c62828,stroke-width:3px
+    classDef coldStreaming fill:#e3f2fd,stroke:#1565c0,stroke-width:2px,stroke-dasharray: 5 5
+    classDef admin fill:#e8f5e8,stroke:#2e7d32,stroke-width:2px
+    classDef hotInfra fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    classDef coldInfra fill:#fafafa,stroke:#616161,stroke-width:2px,stroke-dasharray: 3 3
+    classDef coldPublic fill:#e8eaf6,stroke:#3f51b5,stroke-width:2px,stroke-dasharray: 3 3
+    classDef scaling fill:#f1f8e9,stroke:#689f38,stroke-width:2px
+    classDef storage fill:#fff8e1,stroke:#ff8f00,stroke-width:2px

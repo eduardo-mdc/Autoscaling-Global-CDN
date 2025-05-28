@@ -1,0 +1,4 @@
+videos_mount_path: "/mnt/videos"
+gcs_bucket_name: "uporto-cd-content-master"
+flask_app_path: "/opt/content_manager/app"
+flask_service_name: "content_manager"

@@ -1,110 +1,64 @@
 ---
-# Phase-based Streaming Server Deployment
-# Run from external laptop -> admin VM -> bastion hosts
+# Simplified streaming server deployment
 
-- name: Phase 1a - Prepare Admin VM for K8s Management
-  hosts: admin
+- name: Phase 1 - Setup Admin and Bastion VMs
+  hosts: admin,bastions
   become: yes
-  gather_facts: yes
   tags: ['phase1', 'setup']
   roles:
     - common
-    - gcloud
+    - role: gcloud
+      when: inventory_hostname in groups['admin']
+    - role: content-manager
+      when: inventory_hostname in groups['admin']
+    - role: admin-webapp
+      when: inventory_hostname in groups['admin']
+    - role: cold-autoscaler
+      when: inventory_hostname in groups['admin']
+    - role: bastion
+      when: inventory_hostname in groups['bastions']
 
-- name: Phase 1b - Prepare Bastion VM for K8s Management
-  hosts: bastion-asia-southeast1
+- name: Phase 2 - Deploy Streaming Application
+  hosts: bastions
   become: yes
-  gather_facts: yes
-  tags: ['phase1', 'setup']
-  roles:
-    - common
-    - bastion
-
-
-- name: Phase 2 - Deploy Namespace to All Regions
-  hosts: bastion-asia-southeast1 
-  become: yes
-  gather_facts: yes
-  tags: ['phase2', 'namespace']
-  serial: 1  # Deploy one region at a time
-
+  tags: ['phase2', 'deploy']
   tasks:
-    - name: Deploy namespace
-      include_role:
-        name: streaming-server
-        tasks_from: deploy-namespace
+    - name: Create namespace
+      k8s:
+        name: streaming
+        api_version: v1
+        kind: Namespace
+        state: present
 
-- name: Phase 3 - Deploy ConfigMaps to All Regions
-  hosts: bastion-asia-southeast1 
-  become: yes
-  gather_facts: yes
-  tags: ['phase3', 'configmap']
-  serial: 1
-
-  tasks:
-    - name: Deploy streaming config
+    - name: Deploy ConfigMaps
       include_role:
         name: streaming-server
         tasks_from: deploy-configmap
 
-- name: Phase 4 - Deploy HLS Streaming Server DaemonSet
-  hosts: bastion-asia-southeast1 
-  become: yes
-  gather_facts: yes
-  tags: ['phase4', 'streaming']
-  serial: 1
-
-  tasks:
-    - name: Deploy streaming daemonset
+    - name: Deploy streaming server with CSI
       include_role:
         name: streaming-server
-        tasks_from: deploy-daemonset
+        tasks_from: deploy-deployment
 
-- name: Phase 5 - Deploy Services
-  hosts: bastion-asia-southeast1 
-  become: yes
-  gather_facts: yes
-  tags: ['phase5', 'service']
-  serial: 1
-
-  tasks:
-    - name: Deploy streaming service
+    - name: Deploy service
       include_role:
         name: streaming-server
         tasks_from: deploy-service
 
-- name: Phase 6 - Deploy Ingress
-  hosts: bastion-asia-southeast1
-  become: yes
-  gather_facts: yes
-  tags: ['phase6', 'ingress']
-  serial: 1
-
-  tasks:
-    - name: Deploy ingress
+    - name: Deploy Ingress
       include_role:
         name: streaming-server
         tasks_from: deploy-ingress
 
-- name: Phase 7 - Deploy Monitoring (Optional)
-  hosts: bastion-asia-southeast1 
+#    - name: Deploy NEGs to load balancer
+#      include_role:
+#        name: streaming-server
+#        tasks_from: deploy-negs-to-loadbalancer
+
+- name: Phase 3 - Verification
+  hosts: bastion-europe-west2
   become: yes
-  gather_facts: yes
-  tags: ['phase7', 'monitoring']
-  serial: 1
-
-  tasks:
-    - name: Deploy monitoring stack
-      include_role:
-        name: streaming-server
-        tasks_from: deploy-monitoring
-
-- name: Phase 8 - Verification
-  hosts: bastion-asia-southeast1 
-  become: yes
-  gather_facts: yes
-  tags: ['phase8', 'verify']
-
+  tags: ['phase3', 'verify']
   tasks:
     - name: Verify deployment
       include_role:

@@ -1,3 +1,5 @@
+# terraform/modules/loadbalancer/outputs.tf - Simplified Outputs
+
 output "load_balancer_ip" {
   description = "Global IP address of the load balancer"
   value       = google_compute_global_address.lb_ip.address
@@ -51,4 +53,9 @@ output "nameserver_configuration" {
     nameservers = google_dns_managed_zone.default[0].name_servers
     domain = var.domain_name
   } : null
+}
+
+output "backend_service_name" {
+  description = "Name of the backend service for Ansible to connect NEGs"
+  value       = google_compute_backend_service.default.name
 }

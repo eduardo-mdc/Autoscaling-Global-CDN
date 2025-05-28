@@ -29,8 +29,20 @@ app_liveness_delay: 15
 app_health_period: 5
 app_liveness_period: 15
 
-# Pod anti-affinity
-pod_anti_affinity_weight: 100
+# Deployment-specific settings:
+deployment_type: "Deployment"  
+initial_replicas: 2            
+min_replicas: 1               
+max_replicas: 10              
+
+# HPA settings:
+enable_hpa: true              
+hpa_target_cpu: 70            
+hpa_target_memory: 80         
+
+# Rolling update settings:
+max_surge: "50%"              
+max_unavailable: 0            
 
 # Metrics settings
 prometheus_scrape: "true"
@@ -116,3 +128,39 @@ extra_annotations:
   app.kubernetes.io/part-of: "streaming-platform"
   app.kubernetes.io/version: "v1.0.0"
   streaming.platform/type: "hls"
+
+
+
+  # STORAGE CONFIGURATION FOR GCS FUSE MOUNTING
+
+  # GCS FUSE Mount Configuration
+  enable_gcs_mount : true
+
+  # CSI Driver settings
+  gcs_fuse_csi_driver_version : "main"  # Use latest stable
+  gcs_fuse_csi_namespace : "gcs-fuse-csi-driver"
+
+  # Mount options for optimal video streaming performance
+  gcs_mount_options : "implicit-dirs,uid=101,gid=101,file-mode=644,dir-mode=755"
+  gcs_metadata_cache_capacity : "32768"
+  gcs_type_cache_max_size_mb : "1024"
+  gcs_file_cache_capacity : "1000"
+
+  # Workload Identity configuration
+  enable_workload_identity : true
+  gcs_service_account_name : "{{ app_name }}-sa"
+
+  # Mount paths
+  gcs_mount_path : "/mnt/videos"
+  gcs_mount_readonly : true
+
+  # Storage class configuration
+  gcs_storage_class_name : "gcs-fuse-{{ bastion_region | default('unknown') }}"
+  gcs_pv_name : "gcs-videos-pv-{{ bastion_region | default('unknown') }}"
+  gcs_pvc_name : "gcs-videos-pvc"
+
+  # Storage capacity (symbolic for GCS)
+  gcs_storage_capacity : "1000Gi"
+
+  # PVC binding timeout
+  gcs_pvc_bind_timeout : 120

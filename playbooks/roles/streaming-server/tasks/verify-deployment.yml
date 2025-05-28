@@ -1,15 +1,20 @@
 ---
-# Verify HLS streaming deployment
+# Verify HLS streaming deployment with GCS mount support
 # File: playbooks/roles/streaming-server/tasks/verify-deployment.yml
 
 - name: Get current region from bastion hostname
   shell: "hostname | grep -o 'bastion-[^-]*' | cut -d'-' -f2 || echo 'unknown'"
   register: current_region
 
+- name: Set bastion region fact
+  set_fact:
+    bastion_region: "{{ current_region.stdout }}"
+
 - name: Display current region
   debug:
-    msg: "Verifying deployment in region: {{ current_region.stdout }}"
+    msg: "🔍 Verifying deployment in region: {{ current_region.stdout }}"
 
+# Basic Kubernetes resource checks
 - name: Check namespace status
   k8s_info:
     api_version: v1
@@ -17,13 +22,23 @@
     name: "{{ app_namespace }}"
   register: namespace_check
 
-- name: Check DaemonSet health
+- name: Check Deployment health
   k8s_info:
     api_version: apps/v1
-    kind: DaemonSet
+    kind: Deployment
     name: "{{ app_name }}"
     namespace: "{{ app_namespace }}"
-  register: daemonset_health
+  register: deployment_health
+
+# Add HPA check:
+- name: Check HPA status
+  k8s_info:
+    api_version: autoscaling/v2
+    kind: HorizontalPodAutoscaler
+    name: "{{ app_name }}-hpa"
+    namespace: "{{ app_namespace }}"
+  register: hpa_status
+  when: enable_hpa | default(true) | bool
 
 - name: Check pod health
   k8s_info:
@@ -42,11 +57,46 @@
     namespace: "{{ app_namespace }}"
   register: service_health
 
+# 🎯 NEW: GCS mount verification
+- name: Check GCS storage components
+  block:
+    - name: Check StorageClass
+      k8s_info:
+        api_version: storage.k8s.io/v1
+        kind: StorageClass
+        name: "gcs-fuse-{{ bastion_region }}"
+      register: storageclass_check
+
+    - name: Check PersistentVolume
+      k8s_info:
+        api_version: v1
+        kind: PersistentVolume
+        name: "gcs-videos-pv-{{ bastion_region }}"
+      register: pv_check
+
+    - name: Check PersistentVolumeClaim
+      k8s_info:
+        api_version: v1
+        kind: PersistentVolumeClaim
+        name: "gcs-videos-pvc"
+        namespace: "{{ app_namespace }}"
+      register: pvc_check
+
+    - name: Check Workload Identity ServiceAccount
+      k8s_info:
+        api_version: v1
+        kind: ServiceAccount
+        name: "{{ app_name }}-sa"
+        namespace: "{{ app_namespace }}"
+      register: sa_check
+  when: enable_gcs_mount | default(true) | bool
+
+# Application health checks
 - name: Test HLS endpoint from within cluster
   shell: |
     POD_NAME=$(kubectl -n {{ app_namespace }} get pods -l app={{ app_name }} -o jsonpath='{.items[0].metadata.name}')
     if [ -n "$POD_NAME" ]; then
-      kubectl -n {{ app_namespace }} exec -it $POD_NAME -- curl -k -s -o /dev/null -w "%{http_code}" https://localhost:{{ app_https_port }}/health || echo "Connection failed"
+      kubectl -n {{ app_namespace }} exec -it $POD_NAME -- curl -k -s -o /dev/null -w "%{http_code}" http://localhost:{{ app_http_port }}/health || echo "Connection failed"
     else
       echo "No pods found"
     fi
@@ -57,31 +107,144 @@
   shell: |
     POD_NAME=$(kubectl -n {{ app_namespace }} get pods -l app={{ app_name }} -o jsonpath='{.items[0].metadata.name}')
     if [ -n "$POD_NAME" ]; then
-      kubectl -n {{ app_namespace }} exec -it $POD_NAME -- curl -k -s -o /dev/null -w "%{http_code}" https://localhost:{{ app_https_port }}/hls/ || echo "HLS endpoint not ready"
+      kubectl -n {{ app_namespace }} exec -it $POD_NAME -- curl -k -s -o /dev/null -w "%{http_code}" http://localhost:{{ app_http_port }}/videos/ || echo "Videos endpoint not ready"
     else
       echo "No pods found"
     fi
-  register: hls_streaming_check
+  register: hls_videos_check
   ignore_errors: yes
 
+# 🎯 NEW: GCS mount functionality test
+- name: Test GCS mount functionality
+  block:
+    - name: Check if GCS mount is accessible in pods
+      shell: |
+        POD_NAME=$(kubectl -n {{ app_namespace }} get pods -l app={{ app_name }} -o jsonpath='{.items[0].metadata.name}')
+        if [ -n "$POD_NAME" ]; then
+          kubectl -n {{ app_namespace }} exec $POD_NAME -- ls -la /mnt/videos/ | head -5 || echo "Mount not accessible"
+        else
+          echo "No pods found"
+        fi
+      register: gcs_mount_check
+      ignore_errors: yes
+
+    - name: Check GCS mount point details
+      shell: |
+        POD_NAME=$(kubectl -n {{ app_namespace }} get pods -l app={{ app_name }} -o jsonpath='{.items[0].metadata.name}')
+        if [ -n "$POD_NAME" ]; then
+          kubectl -n {{ app_namespace }} exec $POD_NAME -- df -h /mnt/videos/ || echo "Mount details not available"
+        else
+          echo "No pods found"
+        fi
+      register: gcs_mount_details
+      ignore_errors: yes
+
+    - name: Count content files in GCS mount
+      shell: |
+        POD_NAME=$(kubectl -n {{ app_namespace }} get pods -l app={{ app_name }} -o jsonpath='{.items[0].metadata.name}')
+        if [ -n "$POD_NAME" ]; then
+          kubectl -n {{ app_namespace }} exec $POD_NAME -- find /mnt/videos/ -type f | wc -l || echo "0"
+        else
+          echo "0"
+        fi
+      register: gcs_content_count
+      ignore_errors: yes
+  when: enable_gcs_mount | default(true) | bool
+
+# Display comprehensive verification summary
 - name: Display verification summary
   debug:
     msg: |
       === DEPLOYMENT VERIFICATION SUMMARY ===
       Region: {{ current_region.stdout }}
       
-      Namespace Status: {{ 'OK' if namespace_check.resources else 'FAILED' }}
-      
-      DaemonSet Status: {{ 'OK - ' + (daemonset_health.resources[0].status.numberReady | string) + '/' + (daemonset_health.resources[0].status.desiredNumberScheduled | string) + ' ready' if daemonset_health.resources else 'FAILED' }}
-      
-      Pod Status: {{ pod_health.resources | length }} pods found
+      📦 Kubernetes Resources:
+      - Namespace: {{ 'OK' if namespace_check.resources else 'FAILED' }}
+      - DaemonSet: {{ 'OK - ' + (daemonset_health.resources[0].status.numberReady | string) + '/' + (daemonset_health.resources[0].status.desiredNumberScheduled | string) + ' ready' if daemonset_health.resources else 'FAILED' }}
+      - Pods: {{ pod_health.resources | length }} pods found
       {% for pod in pod_health.resources %}
       - {{ pod.metadata.name }}: {{ pod.status.phase }}
       {% endfor %}
+      - Service: {{ 'OK - ' + (service_health.resources[0].spec.ports | length | string) + ' ports' if service_health.resources else 'FAILED' }}
       
-      Service Status: {{ 'OK - ' + (service_health.resources[0].spec.ports | length | string) + ' ports' if service_health.resources else 'FAILED' }}
+      {% if enable_gcs_mount | default(true) | bool %}
+      💾 GCS Storage Components:
+      - StorageClass: {{ 'OK' if storageclass_check.resources else 'FAILED' }}
+      - PersistentVolume: {{ 'OK' if pv_check.resources else 'FAILED' }}
+      - PersistentVolumeClaim: {{ 'OK (' + pvc_check.resources[0].status.phase + ')' if pvc_check.resources else 'FAILED' }}
+      - Workload Identity SA: {{ 'OK' if sa_check.resources else 'FAILED' }}
       
-      Health Check: {{ hls_health_check.stdout }}
-      HLS Endpoint: {{ hls_streaming_check.stdout }}
+      🗂️  GCS Mount Status:
+      - Mount accessible: {{ 'YES' if 'mnt/videos' in gcs_mount_check.stdout else 'NO' }}
+      - Content files: {{ gcs_content_count.stdout | default('0') }}
+      - Mount details: {{ 'Available' if 'gcsfuse' in gcs_mount_details.stdout else 'Not available' }}
+      - Bucket: {{ regional_bucket_names[bastion_region] | default('Unknown') }}
+      {% endif %}
+      
+      🌐 Application Health:
+      - Health endpoint: {{ hls_health_check.stdout }}
+      - Videos endpoint: {{ hls_videos_check.stdout }}
+      
+      🔗 Access URLs:
+      - Global: https://{{ domain_name }}/
+      - Videos: https://{{ domain_name }}/videos/
+      - Health: https://{{ domain_name }}/health
       
       === END VERIFICATION ===
+
+# Run comprehensive GCS mount test if enabled
+- name: Run comprehensive GCS mount test
+  shell: "{{ manifests_dir }}/test-gcs-mount.sh"
+  register: gcs_mount_test
+  ignore_errors: yes
+  when: enable_gcs_mount | default(true) | bool
+
+- name: Display GCS mount test results
+  debug:
+    msg: |
+      🧪 GCS Mount Test Results:
+      {{ gcs_mount_test.stdout_lines | default(['Test not run']) | join('\n') }}
+  when: enable_gcs_mount | default(true) | bool
+
+# Final deployment status
+- name: Determine overall deployment status
+  set_fact:
+    deployment_healthy: |
+      {{
+        namespace_check.resources and
+        daemonset_health.resources and
+        (daemonset_health.resources[0].status.numberReady | default(0) | int > 0) and
+        service_health.resources and
+        (not (enable_gcs_mount | default(true) | bool) or (
+          storageclass_check.resources and
+          pv_check.resources and
+          pvc_check.resources and
+          (pvc_check.resources[0].status.phase == "Bound") and
+          sa_check.resources
+        ))
+      }}
+
+- name: Display final deployment status
+  debug:
+    msg: |
+      {% if deployment_healthy %}
+      🎉 DEPLOYMENT SUCCESSFUL! 
+      
+      ✅ All components are healthy and ready
+      🌐 Your streaming server is accessible at: https://{{ domain_name }}
+      📹 Video content available at: https://{{ domain_name }}/videos/
+      
+      📋 Management commands:
+      - Upload content: /opt/content/scripts/sync-all-content.sh (from admin VM)
+      - Test mount: {{ manifests_dir }}/test-gcs-mount.sh (from bastion)
+      - Monitor pods: kubectl logs -f -n {{ app_namespace }} -l app={{ app_name }}
+      {% else %}
+      ⚠️  DEPLOYMENT ISSUES DETECTED
+      
+      Please check the verification summary above and resolve any issues.
+      Common solutions:
+      - Wait 2-3 minutes for pod startup and mount initialization
+      - Check CSI driver: kubectl get pods -n gcs-fuse-csi-driver
+      - Verify PVC binding: kubectl get pvc -n {{ app_namespace }}
+      - Test Workload Identity: kubectl describe sa {{ app_name }}-sa -n {{ app_namespace }}
+      {% endif %}

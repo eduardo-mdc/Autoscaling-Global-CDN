@@ -1,0 +1,122 @@
+---
+# Deploy Workload Identity ServiceAccount for GCS access
+# File: playbooks/roles/streaming-server/tasks/deploy-workload-identity.yml
+
+- name: Ensure app_name is set
+  set_fact:
+    app_name: "streaming-server"
+
+- name: Ensure app_namespace is set
+  set_fact:
+    app_namespace: "streaming"
+
+- name: Set manifest directory
+  set_fact:
+    manifests_dir: "/opt/k8s-manifests/streaming-server"
+
+- name: Get current region from bastion hostname (robust method)
+  shell: "hostname | grep -o 'bastion-[a-z0-9-]*' | cut -d'-' -f2-"
+  register: current_region
+
+- name: Validate region extraction
+  debug:
+    msg: |
+      🔍 Region extraction in Workload Identity:
+      - Hostname: {{ ansible_hostname }}
+      - Extracted region: "{{ current_region.stdout }}"
+      - Region length: {{ current_region.stdout | length }}
+
+- name: Set bastion region fact
+  set_fact:
+    bastion_region: "{{ current_region.stdout }}"
+
+- name: Fail if region could not be extracted
+  fail:
+    msg: "Could not extract region from hostname: {{ ansible_hostname }}"
+  when: bastion_region == "" or bastion_region == "unknown"
+
+- name: Set current bucket name with safer fallback
+  set_fact:
+    current_bucket_name: >-
+      {%- if regional_bucket_names is defined and regional_bucket_names is mapping -%}
+        {%- if bastion_region in regional_bucket_names -%}
+          {{ regional_bucket_names[bastion_region] }}
+        {%- else -%}
+          {{ project_name }}-content-{{ bastion_region }}
+        {%- endif -%}
+      {%- else -%}
+        {{ project_name }}-content-{{ bastion_region }}
+      {%- endif -%}
+
+- name: Display Workload Identity setup info
+  debug:
+    msg: |
+      🔐 Setting up Workload Identity for region: {{ bastion_region }}
+      🏷️  K8s ServiceAccount: {{ app_name }}-sa
+      ☁️  GCP ServiceAccount: {{ content_reader_sa_email | default('content-reader-sa@' + project_id + '.iam.gserviceaccount.com') }}
+      📦 Target bucket: {{ current_bucket_name }}
+
+- name: Generate Workload Identity ServiceAccount manifest
+  template:
+    src: workload-identity-sa.yaml.j2
+    dest: "{{ manifests_dir }}/workload-identity-sa.yaml"
+
+- name: Apply Workload Identity ServiceAccount
+  k8s:
+    state: present
+    src: "{{ manifests_dir }}/workload-identity-sa.yaml"
+    wait: true
+    wait_timeout: 60
+
+- name: Verify ServiceAccount creation
+  k8s_info:
+    api_version: v1
+    kind: ServiceAccount
+    name: "{{ app_name }}-sa"
+    namespace: "{{ app_namespace }}"
+  register: sa_info
+
+- name: Display ServiceAccount details
+  debug:
+    msg: |
+      🔐 Workload Identity ServiceAccount Status:
+      
+      ✅ ServiceAccount created: {{ app_name }}-sa
+      🏷️  Namespace: {{ app_namespace }}
+      ☁️  GCP ServiceAccount: {{ sa_info.resources[0].metadata.annotations['iam.gke.io/gcp-service-account'] }}
+      
+      📋 Next step: Update DaemonSet to use this ServiceAccount
+
+- name: Test GCS access from current pod (optional verification)
+  shell: |
+    # This is a basic connectivity test - the actual mount test happens when pods start
+    kubectl run test-gcs-access-{{ ansible_date_time.epoch }} \
+      --image=google/cloud-sdk:alpine \
+      --serviceaccount={{ app_name }}-sa \
+      --namespace={{ app_namespace }} \
+      --rm -i --restart=Never \
+      --command -- gsutil ls gs://{{ current_bucket_name }}/ | head -5
+  register: gcs_access_test
+  ignore_errors: yes
+  changed_when: false
+
+- name: Display GCS access test results
+  debug:
+    msg: |
+      🧪 GCS Access Test Results:
+      
+      {% if gcs_access_test.rc == 0 %}
+      ✅ SUCCESS: ServiceAccount can access regional bucket
+      
+      📁 Sample content from gs://{{ current_bucket_name }}/:
+      {{ gcs_access_test.stdout_lines | join('\n') }}
+      {% else %}
+      ⚠️  Test failed or bucket is empty:
+      {{ gcs_access_test.stderr | default('Unknown error') }}
+      
+      💡 This is normal if:
+      - Bucket is empty (no content synced yet)
+      - Workload Identity propagation is still in progress (wait 2-3 minutes)
+      {% endif %}
+      
+      🎯 Ready to update DaemonSet with serviceAccountName: {{ app_name }}-sa
