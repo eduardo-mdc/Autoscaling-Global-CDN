@@ -1,4 +1,4 @@
-# Admin VM module - Remove the VPC peering (move to main.tf)
+# terraform/modules/admin/main.tf - Admin Module with Webapp Endpoint
 
 # Enable required APIs
 resource "google_project_service" "compute_api" {
@@ -6,32 +6,54 @@ resource "google_project_service" "compute_api" {
   disable_on_destroy = false
 }
 
-# Create a dedicated VPC for admin access
+resource "google_project_service" "dns_api" {
+  service            = "dns.googleapis.com"
+  disable_on_destroy = false
+}
+
+# Create dedicated admin VPC
 resource "google_compute_network" "admin_vpc" {
   name                    = "${var.project_name}-admin-vpc"
   auto_create_subnetworks = false
   description             = "VPC network for ${var.project_name} admin"
+
+  depends_on = [google_project_service.compute_api]
 }
 
-# Create admin subnet
+# Admin subnet
 resource "google_compute_subnetwork" "admin_subnet" {
   name          = "${var.project_name}-admin-subnet"
   region        = var.region
   network       = google_compute_network.admin_vpc.id
-  ip_cidr_range = "10.250.0.0/24"
-  description   = "Subnet for ${var.project_name} admin in ${var.region}"
+  ip_cidr_range = var.admin_subnet_cidr
+  description   = "Subnet for ${var.project_name} admin"
 
   # Enable Google private access
   private_ip_google_access = true
 }
 
-# Create admin VM instance
+# Static IP for admin VM (direct SSH access)
+resource "google_compute_address" "admin_ip" {
+  name         = "${var.project_name}-admin-ip"
+  region       = var.region
+  address_type = "EXTERNAL"
+  description  = "Static IP for admin VM"
+}
+
+# Global static IP for admin webapp
+resource "google_compute_global_address" "admin_webapp_ip" {
+  name        = "${var.project_name}-admin-webapp-ip"
+  description = "Global IP for admin webapp"
+  ip_version  = "IPV4"
+}
+
+# Admin VM instance
 resource "google_compute_instance" "admin" {
   name         = "${var.project_name}-admin"
   machine_type = var.machine_type
   zone         = var.zone
 
-  tags = ["admin-vm", "${var.project_name}-admin"]
+  tags = ["admin-vm", "${var.project_name}-admin", "admin-webapp"]
 
   boot_disk {
     initialize_params {
@@ -53,56 +75,157 @@ resource "google_compute_instance" "admin" {
     ssh-keys = "${var.admin_username}:${var.ssh_public_key}"
   }
 
-  metadata_startup_script = <<-EOF
-    #!/bin/bash
-    set -e
-    apt-get update && apt-get upgrade -y
-    apt-get install -y python3 python3-pip
-    echo "Startup script completed at $(date)" > /var/log/startup-script-completed.log
-  EOF
 
   service_account {
-    scopes = ["cloud-platform"]
+    # Use default compute service account with cloud platform scope
+    scopes = ["https://www.googleapis.com/auth/cloud-platform"]
   }
 
-  deletion_protection = false
+  allow_stopping_for_update = true
+  deletion_protection       = false
+
   depends_on = [google_project_service.compute_api]
 }
 
-# Create static IP for admin VM
-resource "google_compute_address" "admin_ip" {
-  name         = "${var.project_name}-admin-ip"
-  region       = var.region
-  address_type = "EXTERNAL"
+# ============================================================================
+# ADMIN WEBAPP LOAD BALANCER SETUP
+# ============================================================================
+
+# Health check for admin webapp
+resource "google_compute_health_check" "admin_webapp" {
+  name               = "${var.project_name}-admin-webapp-health"
+  description        = "Health check for admin webapp"
+  timeout_sec        = 5
+  check_interval_sec = 10
+  healthy_threshold   = 2
+  unhealthy_threshold = 3
+
+  http_health_check {
+    port         = 80
+    request_path = "/health"
+  }
 }
 
+# Instance group for admin VM
+resource "google_compute_instance_group" "admin_group" {
+  name        = "${var.project_name}-admin-group"
+  zone        = var.zone
 
-# Calculate master CIDRs based on region numbers
-locals {
-  master_cidrs = [
-    for region_num in values(var.region_numbers) :
-    "172.16.${region_num}.0/28"
-  ]
+  instances = [google_compute_instance.admin.self_link]
+
+  named_port {
+    name = "http"
+    port = 80
+  }
 }
 
-# Allow ingress from GKE master subnets to admin VM (dynamic)
-resource "google_compute_firewall" "admin_allow_from_gke_masters" {
-  name    = "${var.project_name}-admin-allow-from-gke-masters"
-  network = google_compute_network.admin_vpc.name
+# Backend service for admin webapp
+resource "google_compute_backend_service" "admin_webapp" {
+  name                  = "${var.project_name}-admin-webapp-backend"
+  description          = "Backend service for admin webapp"
+  protocol             = "HTTP"
+  port_name            = "http"
+  timeout_sec          = 60
+  load_balancing_scheme = "EXTERNAL"
 
-  allow {
-    protocol = "tcp"
-    ports    = ["443", "10250"]
+  health_checks = [google_compute_health_check.admin_webapp.id]
+
+  backend {
+    group           = google_compute_instance_group.admin_group.self_link
+    balancing_mode  = "UTILIZATION"
+    capacity_scaler = 1.0
   }
 
-  # Use calculated master CIDRs
-  source_ranges = local.master_cidrs
-
-  target_tags = ["admin-vm"]
-  priority = 1000
+  # Connection draining
+  connection_draining_timeout_sec = 60
 }
 
-# Create firewall rule for SSH access to admin VM
+# URL map for admin webapp
+resource "google_compute_url_map" "admin_webapp" {
+  name            = "${var.project_name}-admin-webapp-url-map"
+  description     = "URL map for admin webapp"
+  default_service = google_compute_backend_service.admin_webapp.id
+}
+
+# HTTP target proxy for admin webapp
+resource "google_compute_target_http_proxy" "admin_webapp" {
+  name    = "${var.project_name}-admin-webapp-http-proxy"
+  url_map = google_compute_url_map.admin_webapp.id
+}
+
+# HTTPS target proxy (if domain is provided)
+resource "google_compute_managed_ssl_certificate" "admin_webapp" {
+  count = var.domain_name != "" ? 1 : 0
+
+  name = "${var.project_name}-admin-webapp-ssl"
+
+  managed {
+    domains = ["admin.${var.domain_name}"]
+  }
+
+  lifecycle {
+    create_before_destroy = true
+  }
+
+  timeouts {
+    create = "30m"
+    delete = "10m"
+  }
+}
+
+resource "google_compute_target_https_proxy" "admin_webapp" {
+  count = var.domain_name != "" ? 1 : 0
+
+  name             = "${var.project_name}-admin-webapp-https-proxy"
+  url_map          = google_compute_url_map.admin_webapp.id
+  ssl_certificates = [google_compute_managed_ssl_certificate.admin_webapp[0].id]
+}
+
+# HTTP forwarding rule
+resource "google_compute_global_forwarding_rule" "admin_webapp_http" {
+  name       = "${var.project_name}-admin-webapp-http-rule"
+  target     = google_compute_target_http_proxy.admin_webapp.id
+  port_range = "80"
+  ip_address = google_compute_global_address.admin_webapp_ip.address
+
+  labels = {
+    service = "admin-webapp"
+  }
+}
+
+# HTTPS forwarding rule (if SSL enabled)
+resource "google_compute_global_forwarding_rule" "admin_webapp_https" {
+  count = var.domain_name != "" ? 1 : 0
+
+  name       = "${var.project_name}-admin-webapp-https-rule"
+  target     = google_compute_target_https_proxy.admin_webapp[0].id
+  port_range = "443"
+  ip_address = google_compute_global_address.admin_webapp_ip.address
+
+  labels = {
+    service = "admin-webapp"
+    ssl     = "managed"
+  }
+}
+
+# DNS record for admin subdomain (if domain provided)
+resource "google_dns_record_set" "admin_webapp" {
+  count = var.domain_name != "" ? 1 : 0
+
+  name         = "admin.${var.domain_name}."
+  type         = "A"
+  ttl          = 300
+  managed_zone = var.dns_zone_name
+  rrdatas      = [google_compute_global_address.admin_webapp_ip.address]
+
+  depends_on = [google_project_service.dns_api]
+}
+
+# ============================================================================
+# FIREWALL RULES
+# ============================================================================
+
+# SSH access to admin VM
 resource "google_compute_firewall" "admin_ssh" {
   name    = "${var.project_name}-admin-ssh"
   network = google_compute_network.admin_vpc.name
@@ -114,131 +237,84 @@ resource "google_compute_firewall" "admin_ssh" {
 
   source_ranges = var.allowed_ssh_ranges
   target_tags   = ["admin-vm"]
+  priority      = 1000
 }
 
-# Create firewall rule for HTTP/HTTPS access to admin VM
-resource "google_compute_firewall" "admin_https" {
-  name    = "${var.project_name}-admin-https"
+# HTTP access for admin webapp (from load balancer)
+resource "google_compute_firewall" "admin_webapp_http" {
+  name    = "${var.project_name}-admin-webapp-http"
   network = google_compute_network.admin_vpc.name
 
   allow {
     protocol = "tcp"
-    ports    = ["80", "443"]
+    ports    = ["80", "8080"]
   }
 
-  # IAP's IP range for TCP forwarding
-  source_ranges = ["0.0.0.0/0"]
-  target_tags   = ["admin-vm"]
+  # Allow from Google load balancer IP ranges
+  source_ranges = [
+    "130.211.0.0/22",
+    "35.191.0.0/16"
+  ]
+  target_tags = ["admin-webapp"]
+  priority    = 1000
 }
 
-# IAP web configuration for admin VM
-resource "google_iap_web_backend_service_iam_binding" "admin_iap_binding" {
-  project = var.project_id
-  web_backend_service = google_compute_backend_service.admin_backend.name
-  role    = "roles/iap.httpsResourceAccessor"
+# Allow health checks
+resource "google_compute_firewall" "admin_webapp_health" {
+  name    = "${var.project_name}-admin-webapp-health"
+  network = google_compute_network.admin_vpc.name
 
-  members = var.iap_members
-}
-
-resource "google_compute_health_check" "admin_health_check" {
-  name               = "${var.project_name}-admin-health-check"
-  check_interval_sec = 5
-  timeout_sec        = 5
-
-  http_health_check {
-    port         = 80
-    request_path = "/"
-  }
-}
-
-# Create backend service for admin VM
-resource "google_compute_backend_service" "admin_backend" {
-  name        = "${var.project_name}-admin-backend"
-  port_name   = "http"
-  protocol    = "HTTP"
-  timeout_sec = 30
-  health_checks = [google_compute_health_check.admin_health_check.id]
-
-  backend {
-    group = google_compute_instance_group.admin_group.self_link
+  allow {
+    protocol = "tcp"
+    ports    = ["80"]
   }
 
-  iap {
-    oauth2_client_id     = var.oauth_client_id
-    oauth2_client_secret = var.oauth_client_secret
+  # Google Cloud health check IP ranges
+  source_ranges = [
+    "130.211.0.0/22",
+    "35.191.0.0/16"
+  ]
+  target_tags = ["admin-webapp"]
+  priority    = 500
+}
+
+# Allow outbound internet access
+resource "google_compute_firewall" "admin_egress" {
+  name      = "${var.project_name}-admin-egress"
+  network   = google_compute_network.admin_vpc.name
+  direction = "EGRESS"
+
+  allow {
+    protocol = "tcp"
+    ports    = ["80", "443", "22", "53"]
   }
-}
 
-# Create instance group for admin VM
-resource "google_compute_instance_group" "admin_group" {
-  name      = "${var.project_name}-admin-group"
-  zone      = var.zone
-  instances = [google_compute_instance.admin.self_link]
-
-  # Add named port configuration
-  named_port {
-    name = "http"
-    port = 80
+  allow {
+    protocol = "udp"
+    ports    = ["53"]
   }
+
+  destination_ranges = ["0.0.0.0/0"]
+  target_tags       = ["admin-vm", "admin-webapp"]
+  priority          = 1000
 }
 
-# Create URL map for admin service
-resource "google_compute_url_map" "admin_url_map" {
-  name            = "${var.project_name}-admin-url-map"
-  default_service = google_compute_backend_service.admin_backend.id
-}
+# Allow ingress from GKE master subnets (dynamic calculation)
+resource "google_compute_firewall" "admin_allow_from_gke_masters" {
+  name    = "${var.project_name}-admin-allow-gke-masters"
+  network = google_compute_network.admin_vpc.name
 
-# Create HTTP proxy for admin service
-resource "google_compute_target_http_proxy" "admin_http_proxy" {
-  name    = "${var.project_name}-admin-http-proxy"
-  url_map = google_compute_url_map.admin_url_map.id
-}
-
-# Create global IP address for admin frontend
-resource "google_compute_global_address" "admin_ip" {
-  name         = "${var.project_name}-admin-global-ip"
-  description  = "Global IP for ${var.project_name} admin frontend"
-}
-
-# Create HTTP forwarding rule
-resource "google_compute_global_forwarding_rule" "admin_http" {
-  name       = "${var.project_name}-admin-http-rule"
-  target     = google_compute_target_http_proxy.admin_http_proxy.id
-  port_range = "80"
-  ip_address = google_compute_global_address.admin_ip.address
-}
-
-# Create SSL certificate (self-managed or managed)
-resource "google_compute_managed_ssl_certificate" "admin_cert" {
-  name = "${var.project_name}-admin-cert"
-
-  managed {
-    domains = ["admin.${var.domain_name}"]
+  allow {
+    protocol = "tcp"
+    ports    = ["443", "10250"]
   }
-}
 
-# Create HTTPS proxy with SSL certificate
-resource "google_compute_target_https_proxy" "admin_https_proxy" {
-  name             = "${var.project_name}-admin-https-proxy"
-  url_map          = google_compute_url_map.admin_url_map.id
-  ssl_certificates = [google_compute_managed_ssl_certificate.admin_cert.id]
-}
+  # Calculate master CIDRs based on region numbers
+  source_ranges = [
+    for region_num in values(var.region_numbers) :
+    "172.16.${region_num}.0/28"
+  ]
 
-# Create HTTPS forwarding rule
-resource "google_compute_global_forwarding_rule" "admin_forward_https" {
-  name       = "${var.project_name}-admin-https-rule"
-  target     = google_compute_target_https_proxy.admin_https_proxy.id
-  port_range = "443"
-  ip_address = google_compute_global_address.admin_ip.address
-}
-
-# Create A record for admin subdomain pointing to the global IP
-resource "google_dns_record_set" "admin_record" {
-  name         = "admin.${var.domain_name}."
-  type         = "A"
-  ttl          = 300
-  managed_zone = "${var.project_name}-zone"
-
-
-  rrdatas = [google_compute_global_address.admin_ip.address]
+  target_tags = ["admin-vm"]
+  priority    = 1000
 }

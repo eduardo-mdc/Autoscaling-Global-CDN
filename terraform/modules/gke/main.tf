@@ -91,12 +91,13 @@ resource "google_container_node_pool" "primary" {
   cluster    = google_container_cluster.cluster.id
 
   node_locations = null # Can use any zone in the region
-  initial_node_count = 1
 
   # Autoscaling configuration
   autoscaling {
-    min_node_count = var.min_nodes
-    max_node_count = var.max_nodes
+    total_min_node_count = var.min_nodes
+    total_max_node_count = var.max_nodes
+
+    location_policy = "ANY"  # Balanced distribution across zones
   }
 
   # Node management
@@ -109,6 +110,7 @@ resource "google_container_node_pool" "primary" {
   upgrade_settings {
     max_surge       = 1
     max_unavailable = 0
+    strategy = "SURGE"
   }
 
   # Node configuration

@@ -193,3 +193,9 @@ variable "oauth_client_secret" {
   type        = string
   sensitive   = true
 }
+
+variable "admin_allowed_ips" {
+    description = "List of CIDR ranges allowed to SSH to the admin VM"
+    type        = list(string)
+    default     = ["0.0.0.0/0"]  # Change this to restrict access in production
+}

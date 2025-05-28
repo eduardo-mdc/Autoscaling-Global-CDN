@@ -1,207 +1,386 @@
 #!/bin/bash
+
+# 3-Phase Deployment Script for Multi-Region Streaming Infrastructure
 set -e
 
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
-YELLOW='\033[0;33m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
 NC='\033[0m' # No Color
-
-# Default operation mode
-OPERATION="apply"
-
-# Parse command line arguments
-if [[ $# -gt 0 ]]; then
-  case "$1" in
-    --apply)
-      OPERATION="apply"
-      ;;
-    --destroy)
-      OPERATION="destroy"
-      ;;
-    --help)
-      echo "Usage: $0 [--apply|--destroy|--help]"
-      echo
-      echo "Options:"
-      echo "  --apply     Deploy the infrastructure (default)"
-      echo "  --destroy   Destroy the infrastructure"
-      echo "  --help      Show this help message"
-      exit 0
-      ;;
-    *)
-      echo -e "${RED}Error: Unknown option $1${NC}"
-      echo "Usage: $0 [--apply|--destroy|--help]"
-      exit 1
-      ;;
-  esac
-fi
 
 # Configuration
 PROJECT_DIR=$(pwd)
-PLAYBOOKS_DIR="${PROJECT_DIR}/playbooks"
 TERRAFORM_DIR="${PROJECT_DIR}/terraform"
+PLAYBOOKS_DIR="${PROJECT_DIR}/playbooks"
 SSH_PRIVATE_KEY="$HOME/.ssh/id_rsa"
 SSH_PUBLIC_KEY="$HOME/.ssh/id_rsa.pub"
 ANSIBLE_VARS_SCRIPT="${PROJECT_DIR}/generate-ansible-vars.sh"
 
-# Ensure the script is run from the project root
-if [ ! -d "${TERRAFORM_DIR}" ] || [ ! -d "${PLAYBOOKS_DIR}" ]; then
-  echo -e "${RED}Error: Please run this script from the project root directory${NC}"
-  exit 1
-fi
+# Default values
+OPERATION="deploy"
+PHASE="all"
+SKIP_CONFIRMATION=false
+DOCKER_IMAGE=""
+DOCKER_TAG="latest"
 
-# Display header
-echo -e "${GREEN}====================================${NC}"
-echo -e "${GREEN} Multi-Region GKE Streaming Server ${NC}"
-echo -e "${GREEN}====================================${NC}"
-echo
+# ============================================================================
+# UTILITY FUNCTIONS
+# ============================================================================
+
+print_header() {
+    echo -e "${BLUE}========================================${NC}"
+    echo -e "${BLUE} $1 ${NC}"
+    echo -e "${BLUE}========================================${NC}"
+    echo
+}
+
+print_phase() {
+    echo -e "${GREEN}=======================================${NC}"
+    echo -e "${GREEN} PHASE $1: $2 ${NC}"
+    echo -e "${GREEN}=======================================${NC}"
+    echo
+}
+
+print_status() {
+    echo -e "${GREEN}[INFO]${NC} $1"
+}
+
+print_warning() {
+    echo -e "${YELLOW}[WARN]${NC} $1"
+}
+
+print_error() {
+    echo -e "${RED}[ERROR]${NC} $1"
+}
+
+print_success() {
+    echo -e "${GREEN}[SUCCESS]${NC} $1"
+}
+
+show_help() {
+    cat << EOF
+Usage: $0 [OPTIONS]
+
+Multi-Region Streaming Infrastructure Deployment
+
+OPTIONS:
+    --phase <phase>         Deploy specific phase (1, 2, 3, or all) [default: all]
+    --operation <op>        Operation: deploy, destroy, plan [default: deploy]
+    --docker-image <image>  Docker image for streaming server
+    --docker-tag <tag>      Docker tag [default: latest]
+    --skip-confirmation     Skip confirmation prompts
+    --help                  Show this help message
+
+PHASES:
+    1   Infrastructure     Deploy Terraform infrastructure (VMs, networks, GKE)
+    2   Kubernetes        Setup Kubernetes access and basic resources
+    3   Applications      Deploy streaming server and admin webapp
+    all Deploy all phases sequentially
+
+OPERATIONS:
+    deploy    Deploy infrastructure and applications
+    destroy   Destroy all infrastructure
+    plan      Show deployment plan without applying
+
+EXAMPLES:
+    # Deploy everything
+    $0
+
+    # Deploy only infrastructure
+    $0 --phase 1
+
+    # Deploy with custom Docker image
+    $0 --docker-image myregistry/streaming-server --docker-tag v1.2.3
+
+    # Plan deployment without applying
+    $0 --operation plan
+
+    # Destroy everything
+    $0 --operation destroy --skip-confirmation
+
+EOF
+}
+
+# Parse command line arguments
+parse_args() {
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --phase)
+                PHASE="$2"
+                shift 2
+                ;;
+            --operation)
+                OPERATION="$2"
+                shift 2
+                ;;
+            --docker-image)
+                DOCKER_IMAGE="$2"
+                shift 2
+                ;;
+            --docker-tag)
+                DOCKER_TAG="$2"
+                shift 2
+                ;;
+            --skip-confirmation)
+                SKIP_CONFIRMATION=true
+                shift
+                ;;
+            --help)
+                show_help
+                exit 0
+                ;;
+            *)
+                print_error "Unknown option: $1"
+                show_help
+                exit 1
+                ;;
+        esac
+    done
+
+    # Validate phase
+    if [[ ! "$PHASE" =~ ^(1|2|all)$ ]]; then
+        print_error "Invalid phase: $PHASE. Must be 1, 2 or all"
+        exit 1
+    fi
+
+    # Validate operation
+    if [[ ! "$OPERATION" =~ ^(deploy|destroy|plan)$ ]]; then
+        print_error "Invalid operation: $OPERATION. Must be deploy, destroy, or plan"
+        exit 1
+    fi
+}
 
 # Check prerequisites
-echo -e "${YELLOW}Checking prerequisites...${NC}"
+check_prerequisites() {
+    print_status "Checking prerequisites..."
 
-# Check if terraform is installed
-if ! command -v terraform &> /dev/null; then
-  echo -e "${RED}Error: terraform is not installed${NC}"
-  exit 1
-fi
+    # Check required directories
+    if [ ! -d "$TERRAFORM_DIR" ]; then
+        print_error "Terraform directory not found: $TERRAFORM_DIR"
+        exit 1
+    fi
 
-# Check if ansible is installed
-if ! command -v ansible &> /dev/null; then
-  echo -e "${RED}Error: ansible is not installed${NC}"
-  exit 1
-fi
+    if [ ! -d "$PLAYBOOKS_DIR" ]; then
+        print_error "Playbooks directory not found: $PLAYBOOKS_DIR"
+        exit 1
+    fi
 
-# Check if kubectl is installed
-if ! command -v kubectl &> /dev/null; then
-  echo -e "${RED}Error: kubectl is not installed${NC}"
-  exit 1
-fi
+    # Check tools
+    local missing_tools=()
 
-# Check if SSH keys exist
-if [ ! -f "$SSH_PRIVATE_KEY" ] || [ ! -f "$SSH_PUBLIC_KEY" ]; then
-  echo -e "${RED}Error: SSH keys not found at $SSH_PRIVATE_KEY and $SSH_PUBLIC_KEY${NC}"
-  exit 1
-fi
+    command -v terraform >/dev/null || missing_tools+=("terraform")
+    command -v ansible >/dev/null || missing_tools+=("ansible")
+    command -v kubectl >/dev/null || missing_tools+=("kubectl")
+    command -v gcloud >/dev/null || missing_tools+=("gcloud")
 
-# Check if generate-ansible-vars.sh script exists
-if [ ! -f "$ANSIBLE_VARS_SCRIPT" ]; then
-  echo -e "${RED}Error: generate-ansible-vars.sh script not found${NC}"
-  exit 1
-fi
+    if [ ${#missing_tools[@]} -ne 0 ]; then
+        print_error "Missing required tools: ${missing_tools[*]}"
+        print_error "Please install them before continuing."
+        exit 1
+    fi
 
-echo -e "${GREEN}All prerequisites are met.${NC}"
-echo
+    # Check SSH keys
+    if [ ! -f "$SSH_PRIVATE_KEY" ] || [ ! -f "$SSH_PUBLIC_KEY" ]; then
+        print_error "SSH keys not found. Please generate them:"
+        print_error "ssh-keygen -t rsa -b 4096 -f ~/.ssh/id_rsa"
+        exit 1
+    fi
 
-# Set default value for ADMIN_USERNAME if not set in .env
-ADMIN_USERNAME=${ADMIN_USERNAME:-ubuntu}
+    # Check Ansible vars script
+    if [ ! -f "$ANSIBLE_VARS_SCRIPT" ]; then
+        print_error "Ansible variables script not found: $ANSIBLE_VARS_SCRIPT"
+        exit 1
+    fi
 
-echo
-echo -e "${YELLOW}PHASE 1: INFRASTRUCTURE ${OPERATION^^}${NC}"
-echo -e "${YELLOW}=====================================${NC}"
+    print_success "All prerequisites met"
+    echo
+}
 
-# Initialize Terraform
-echo -e "${GREEN}Initializing Terraform...${NC}"
-cd "${TERRAFORM_DIR}"
-terraform init
+# Create Ansible inventory
+create_ansible_inventory() {
+    print_status "Creating Ansible inventory..."
 
-if [ "$OPERATION" == "apply" ]; then
-  # Plan Terraform deployment
-  echo -e "${GREEN}Planning Terraform deployment...${NC}"
-  terraform plan -out=tfplan
+    local admin_ip
+    local inventory_file="${PLAYBOOKS_DIR}/inventory/hosts.ini"
 
-  # Confirm deployment
-  echo
-  echo -e "${YELLOW}Review the plan above. Do you want to apply it? (y/n)${NC}"
-  read -p "" CONFIRM
-  if [[ $CONFIRM != "y" && $CONFIRM != "Y" ]]; then
-    echo -e "${RED}Deployment aborted.${NC}"
-    exit 1
-  fi
+    cd "$TERRAFORM_DIR"
 
-  # Apply Terraform
-  echo -e "${GREEN}Applying Terraform configuration...${NC}"
-  terraform apply tfplan
+    # Get admin IP from Terraform
+    admin_ip=$(terraform output -raw admin_public_ip 2>/dev/null || echo "")
 
-  # Get the admin VM IP and bastion IPs
-  echo -e "${GREEN}Extracting Terraform outputs...${NC}"
-  ADMIN_IP=$(terraform output -raw admin_public_ip)
-  echo -e "${GREEN}Admin VM IP: ${ADMIN_IP}${NC}"
+    if [ -z "$admin_ip" ]; then
+        print_error "Could not get admin IP from Terraform outputs"
+        return 1
+    fi
 
-  # Get bastion internal IPs
-  BASTION_IPS=$(terraform output -json bastion_internal_ips)
-  echo -e "${GREEN}Bastion IPs extracted${NC}"
+    # Get bastion IPs
+    local bastion_ips
+    bastion_ips=$(terraform output -json bastion_internal_ips 2>/dev/null || echo "{}")
 
-  # Return to project directory
-  cd "${PROJECT_DIR}"
+    cd "$PROJECT_DIR"
 
-  # Generate Ansible variables from Terraform outputs
-  echo -e "${GREEN}Generating Ansible variables from Terraform outputs...${NC}"
-  chmod +x "$ANSIBLE_VARS_SCRIPT"
-  "$ANSIBLE_VARS_SCRIPT" --force
+    # Create inventory directory
+    mkdir -p "${PLAYBOOKS_DIR}/inventory"
 
-  # Create Ansible inventory with admin and bastions
-  echo -e "${GREEN}Creating Ansible inventory with jump host configuration...${NC}"
-
-  INVENTORY_FILE="${PLAYBOOKS_DIR}/inventory/hosts.ini"
-  mkdir -p "${PLAYBOOKS_DIR}/inventory"
-
-  # Create inventory with admin and bastions (via jump host)
-  cat > "$INVENTORY_FILE" << EOF
+    # Create inventory file
+    cat > "$inventory_file" << EOF
 [admin]
-admin-vm ansible_host=${ADMIN_IP} ansible_user=${ADMIN_USERNAME} ansible_ssh_private_key_file=${SSH_PRIVATE_KEY}
+admin-vm ansible_host=${admin_ip} ansible_user=${ADMIN_USERNAME:-ubuntu} ansible_ssh_private_key_file=${SSH_PRIVATE_KEY}
 
 [bastions]
 EOF
 
-  # Add bastion hosts using jump host configuration
-  echo "$BASTION_IPS" | jq -r 'to_entries[] | "\(.key) \(.value)"' | while read region ip; do
-    echo "bastion-${region} ansible_host=${ip} ansible_user=${ADMIN_USERNAME} ansible_ssh_private_key_file=${SSH_PRIVATE_KEY} bastion_region=${region}" >> "$INVENTORY_FILE"
-  done
+    # Add bastion hosts
+    if [ "$bastion_ips" != "{}" ]; then
+        echo "$bastion_ips" | python3 -c "
+import json, sys
+data = json.load(sys.stdin)
+for region, ip in data.items():
+    print(f'bastion-{region} ansible_host={ip} ansible_user=${ADMIN_USERNAME:-ubuntu} ansible_ssh_private_key_file=${SSH_PRIVATE_KEY} bastion_region={region}')
+" >> "$inventory_file"
+    fi
 
-  # Add group variables
-  cat >> "$INVENTORY_FILE" << EOF
+    # Add group variables
+    cat >> "$inventory_file" << 'EOF'
 
 [admin:vars]
 ansible_ssh_common_args='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'
 ansible_python_interpreter=/usr/bin/python3
 
 [bastions:vars]
-ansible_ssh_common_args='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ProxyJump=${ADMIN_USERNAME}@${ADMIN_IP}'
+ansible_ssh_common_args='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ProxyJump=ubuntu@ADMIN_IP'
 ansible_python_interpreter=/usr/bin/python3
 
 [all:vars]
 ansible_ssh_common_args='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'
 EOF
 
-  echo -e "${GREEN}Inventory file created: ${INVENTORY_FILE}${NC}"
-  echo -e "${YELLOW}Bastion hosts will be accessed via admin VM as jump host${NC}"
+    # Replace ADMIN_IP placeholder
+    sed -i "s/ADMIN_IP/${admin_ip}/g" "$inventory_file"
 
+    print_success "Inventory created: $inventory_file"
+}
 
-else
-  # Destroy confirmation
-  echo -e "${RED}WARNING: This will destroy all infrastructure resources!${NC}"
-  echo -e "${YELLOW}Are you sure you want to destroy the infrastructure? (type 'destroy' to confirm)${NC}"
-  read -p "" CONFIRM
-  if [[ $CONFIRM != "destroy" ]]; then
-    echo -e "${RED}Destroy operation aborted.${NC}"
-    exit 1
-  fi
+# ============================================================================
+# PHASE 1: INFRASTRUCTURE DEPLOYMENT
+# ============================================================================
 
-  # Destroy infrastructure
-  echo -e "${GREEN}Destroying infrastructure...${NC}"
-  terraform destroy -auto-approve
+deploy_phase1() {
+    print_phase "1" "INFRASTRUCTURE DEPLOYMENT"
 
-  echo -e "${GREEN}Infrastructure successfully destroyed.${NC}"
+    cd "$TERRAFORM_DIR"
 
-  # Clean up generated files
-  cd "${PROJECT_DIR}"
-  if [ -f "${PLAYBOOKS_DIR}/inventory/hosts.ini" ]; then
-    rm "${PLAYBOOKS_DIR}/inventory/hosts.ini"
-    echo -e "${GREEN}Cleaned up inventory file${NC}"
-  fi
+    print_status "Initializing Terraform..."
+    terraform init
 
-  if [ -f "${PLAYBOOKS_DIR}/group_vars/all.yaml" ]; then
-    rm "${PLAYBOOKS_DIR}/group_vars/all.yaml"
-    echo -e "${GREEN}Cleaned up Ansible variables file${NC}"
-  fi
-fi
+    if [ "$OPERATION" = "plan" ]; then
+        print_status "Showing Terraform plan..."
+        terraform plan
+        return 0
+    fi
+
+    print_status "Planning infrastructure deployment..."
+    terraform plan -out=tfplan
+
+    if [ "$OPERATION" = "destroy" ]; then
+        if [ "$SKIP_CONFIRMATION" = false ]; then
+            print_warning "⚠️  WARNING: This will DESTROY all infrastructure!"
+            read -p "Type 'destroy' to confirm: " confirm
+            if [ "$confirm" != "destroy" ]; then
+                print_error "Destroy operation cancelled"
+                exit 1
+            fi
+        fi
+
+        print_status "Destroying infrastructure..."
+        terraform destroy -auto-approve
+        print_success "Infrastructure destroyed"
+        return 0
+    fi
+
+    if [ "$SKIP_CONFIRMATION" = false ]; then
+        echo
+        print_warning "Review the Terraform plan above."
+        read -p "Apply this plan? (y/N): " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            print_error "Phase 1 cancelled by user"
+            exit 1
+        fi
+    fi
+
+    print_status "Applying Terraform configuration..."
+    terraform apply tfplan
+
+    print_success "✅ Phase 1 completed - Infrastructure deployed"
+
+    # Display key outputs
+    echo
+    print_status "Infrastructure Summary:"
+    echo -e "${CYAN}Admin VM SSH:${NC} $(terraform output -raw admin_ssh_command 2>/dev/null || echo 'Not available')"
+    echo -e "${CYAN}Admin Webapp:${NC} $(terraform output -raw admin_webapp_ip 2>/dev/null || echo 'Not available')"
+    echo -e "${CYAN}Streaming LB:${NC} $(terraform output -raw load_balancer_ip 2>/dev/null || echo 'Not available')"
+    echo
+
+    cd "$PROJECT_DIR"
+}
+
+# ============================================================================
+# PHASE 2: KUBERNETES SETUP
+# ============================================================================
+
+deploy_phase2() {
+    print_phase "2" "KUBERNETES SETUP"
+
+    # Generate Ansible variables from Terraform outputs
+    print_status "Generating Ansible variables from Terraform outputs..."
+    chmod +x "$ANSIBLE_VARS_SCRIPT"
+    "$ANSIBLE_VARS_SCRIPT" --force
+
+    # Create Ansible inventory
+    print_status "Creating Ansible inventory..."
+    create_ansible_inventory
+
+    cd "$PLAYBOOKS_DIR"
+
+    # Test connectivity
+    print_status "Testing connectivity to admin VM..."
+    if ! ansible admin -m ping >/dev/null 2>&1; then
+        print_warning "Cannot reach admin VM yet. Waiting 30 seconds..."
+        sleep 30
+        if ! ansible admin -m ping; then
+            print_error "Cannot connect to admin VM. Check SSH configuration."
+            exit 1
+        fi
+    fi
+
+    # Phase 2a: Setup admin and bastion hosts
+    print_status "Setting up admin and bastion hosts..."
+    ansible-playbook k8s-setup.yaml --tags "setup" || {
+        print_error "Failed to setup admin and bastion hosts"
+        exit 1
+    }
+
+    # Phase 2b: Configure Kubernetes access
+    print_status "Configuring Kubernetes access..."
+    ansible-playbook k8s-setup.yaml --tags "k8s-access" || {
+        print_error "Failed to configure Kubernetes access"
+        exit 1
+    }
+
+    # Phase 2c: Setup namespaces and basic resources
+    print_status "Setting up Kubernetes namespaces..."
+    ansible-playbook k8s-setup.yaml --tags "namespaces" || {
+        print_error "Failed to setup Kubernetes namespaces"
+        exit 1
+    }
+
+    print_success "✅ Phase 2 completed - Kubernetes ready"
+    echo
+
+    cd "$PROJECT_DIR"
+}
+

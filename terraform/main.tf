@@ -1,6 +1,4 @@
-# Main Terraform configuration for global multi-region infrastructure
-
-# Configure Google provider
+# Configure providers
 provider "google" {
   project     = var.project_id
   credentials = file(var.credentials_file)
@@ -12,21 +10,17 @@ provider "google-beta" {
   credentials = file(var.credentials_file)
   region      = var.regions[0]
 }
-
-# Fetch region information for mapping
+# Local values for consistent naming and CIDR calculations
 locals {
-  # Map regions to numeric IDs for CIDR calculations
   region_numbers = {
     for idx, region in var.regions : region => idx + 1
   }
 
-  # Build a map of CIDR ranges for each region
   region_cidrs = {
     for region in var.regions :
     region => "10.${local.region_numbers[region]}.0.0/20"
   }
 
-  # For each region, create a list of other regions' CIDRs
   other_region_cidrs = {
     for region in var.regions :
     region => [
@@ -34,9 +28,16 @@ locals {
       cidr if r != region
     ]
   }
+
+  # Fixed admin CIDR to avoid circular dependency
+  admin_cidr = "10.250.0.0/24"
 }
 
-# Create admin VM FIRST (no dependencies)
+# ============================================================================
+# PHASE 1: CORE INFRASTRUCTURE (No interdependencies)
+# ============================================================================
+
+# 1.1 Admin VPC and VM (independent)
 module "admin" {
   source = "./modules/admin"
 
@@ -48,19 +49,22 @@ module "admin" {
   admin_username = var.admin_username
   ssh_public_key = file(var.ssh_public_key_path)
 
-  # Pass region numbers for dynamic master CIDR calculation
+  # Pass region numbers for firewall rules
   region_numbers = local.region_numbers
+  all_regions    = var.regions
 
-  # All regions for admin scripts (no module dependencies)
-  all_regions = var.regions
+  # Admin webapp configuration
+  domain_name    = var.domain_name
+  dns_zone_name  = var.domain_name != "" ? "${var.project_name}-zone" : ""
 
-  iap_members = var.admin_iap_members
-  oauth_client_id = var.oauth_client_id
-  oauth_client_secret = var.oauth_client_secret
-  domain_name = var.domain_name
+  # Security
+  allowed_ssh_ranges = var.admin_allowed_ips
+
+  # Use local admin CIDR to avoid circular dependency
+  admin_subnet_cidr = local.admin_cidr
 }
 
-# Create storage buckets (can run in parallel with networking)
+# 1.2 Storage buckets (independent)
 module "storage" {
   source = "./modules/storage"
 
@@ -80,7 +84,11 @@ module "storage" {
   force_destroy                   = var.storage_force_destroy
 }
 
-# Create VPC networks in each region (depends on admin)
+# ============================================================================
+# PHASE 2: NETWORKING (Depends only on admin)
+# ============================================================================
+
+# 2.1 Regional VPCs (depends only on admin CIDR)
 module "network" {
   source   = "./modules/network"
   for_each = local.region_numbers
@@ -89,42 +97,38 @@ module "network" {
   project_name          = var.project_name
   region                = each.key
   region_number         = each.value
-  admin_cidr            = module.admin.admin_subnet_cidr
+  admin_cidr            = local.admin_cidr  # Use local value
   other_region_cidrs    = local.other_region_cidrs[each.key]
 }
 
-# Update admin module with network links (after networks are created)
-# This creates the VPC peering connections FROM admin TO regional networks
+# 2.2 VPC Peering (admin to regions)
 resource "google_compute_network_peering" "admin_to_region" {
   for_each = local.region_numbers
 
-  name         = "${var.project_name}-admin-to-region-${each.value}"
+  name         = "${var.project_name}-admin-to-${each.key}"
   network      = module.admin.admin_vpc_self_link
   peer_network = module.network[each.key].network_self_link
 
-  # Enable route sharing
   export_custom_routes = true
   import_custom_routes = true
-
-  # Enable subnet route sharing
-  export_subnet_routes_with_public_ip = true
-  import_subnet_routes_with_public_ip = true
 }
 
 resource "google_compute_network_peering" "region_to_admin" {
   for_each = local.region_numbers
 
-  name         = "${var.project_name}-region-${each.value}-to-admin"
+  name         = "${var.project_name}-${each.key}-to-admin"
   network      = module.network[each.key].network_self_link
   peer_network = module.admin.admin_vpc_self_link
 
   export_custom_routes = true
   import_custom_routes = true
-  export_subnet_routes_with_public_ip = true
-  import_subnet_routes_with_public_ip = true
 }
 
-# Create GKE clusters in each region (depends on networks)
+# ============================================================================
+# PHASE 3: KUBERNETES (Depends on networking)
+# ============================================================================
+
+# 3.1 GKE Clusters (depends on networks)
 module "gke" {
   source   = "./modules/gke"
   for_each = local.region_numbers
@@ -135,8 +139,9 @@ module "gke" {
   region_number     = each.value
   network_self_link = module.network[each.key].network_self_link
   subnet_self_link  = module.network[each.key].subnet_self_link
-  admin_cidr        = module.admin.admin_subnet_cidr
+  admin_cidr        = local.admin_cidr  # Use local value
 
+  # Node configuration
   min_nodes         = var.min_nodes
   max_nodes         = var.max_nodes
   node_machine_type = var.node_machine_type
@@ -144,6 +149,7 @@ module "gke" {
   node_disk_type    = var.node_disk_type
 }
 
+# 3.2 Bastion hosts (depends on networks)
 module "bastion" {
   source   = "./modules/bastion"
   for_each = local.region_numbers
@@ -151,16 +157,20 @@ module "bastion" {
   project_id     = var.project_id
   project_name   = var.project_name
   region         = each.key
-  machine_type   = "e2-medium"  # Small instance for bastion
+  machine_type   = "e2-medium"
   admin_username = var.admin_username
   ssh_public_key = file(var.ssh_public_key_path)
 
-  # Network configuration
   network_name      = module.network[each.key].network_name
   subnet_self_link  = module.network[each.key].subnet_self_link
-  admin_cidr        = module.admin.admin_subnet_cidr
+  admin_cidr        = local.admin_cidr  # Use local value
 }
 
+# ============================================================================
+# PHASE 4: LOAD BALANCER (Independent, no backend dependencies)
+# ============================================================================
+
+# 4.1 Main Load Balancer (independent - backends added later by Ansible)
 module "loadbalancer" {
   source = "./modules/loadbalancer"
 
@@ -169,13 +179,8 @@ module "loadbalancer" {
   regions      = var.regions
   domain_name  = var.domain_name
 
-  # Domain features
+  # SSL and domain configuration
   enable_regional_subdomains = var.enable_regional_subdomains
   enable_caa_records        = var.enable_caa_records
   additional_domains        = var.additional_domains
-
-  backend_services = []
-  regional_backend_services = {}
-
-  depends_on = [module.gke]
 }
