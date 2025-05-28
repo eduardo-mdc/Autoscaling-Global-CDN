@@ -13,6 +13,8 @@
       when: inventory_hostname in groups['admin']
     - role: admin-webapp
       when: inventory_hostname in groups['admin']
+    - role: cold-autoscaler
+      when: inventory_hostname in groups['admin']
     - role: bastion
       when: inventory_hostname in groups['bastions']
 

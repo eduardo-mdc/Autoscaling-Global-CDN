@@ -9,6 +9,7 @@ import os
 import json
 import logging
 import subprocess
+import argparse
 from datetime import datetime, timedelta
 
 # Configure logging
@@ -350,18 +351,79 @@ def scale_cluster_nodes(region, target_nodes):
             'error': error_msg
         }
 
+def parse_arguments():
+    """Parse command line arguments"""
+    parser = argparse.ArgumentParser(description='Cold Cluster Scaler - Geographic and latency-based GKE scaling')
+
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument('--up', action='store_true',
+                       help='Force scale up cold regions (ignore traffic/latency thresholds)')
+    group.add_argument('--down', action='store_true',
+                       help='Force scale down cold regions (ignore traffic/latency thresholds)')
+
+    parser.add_argument('--target-nodes', type=int, default=1,
+                        help='Number of nodes to scale to when using --up (default: 1)')
+
+    return parser.parse_args()
+
+# Replace the main() function with this updated version:
 def main():
     """Main execution function"""
+    # Parse command line arguments
+    args = parse_arguments()
+
     print("🚀 Starting Cold Cluster Scaler")
     print(f"Project: {PROJECT_ID}")
     print(f"Hot regions: {HOT_REGIONS}")
     print(f"Cold regions: {COLD_REGIONS}")
     print()
-    print("📊 Scaling Thresholds:")
+
+    # Check for forced scaling
+    if args.up:
+        print("🔺 FORCED SCALE UP - Ignoring traffic/latency thresholds")
+        print(f"Target nodes: {args.target_nodes}")
+        print("-" * 50)
+
+        scaling_results = []
+        for region in COLD_REGIONS:
+            print(f"Force scaling UP {region} to {args.target_nodes} nodes...")
+            scale_result = scale_cluster_nodes(region=region, target_nodes=args.target_nodes)
+            scaling_results.append(scale_result)
+            print(f"  Result: {scale_result['status']}")
+            if scale_result.get('message'):
+                print(f"  Message: {scale_result['message']}")
+            if scale_result.get('error'):
+                print(f"  Error: {scale_result['error']}")
+            print()
+
+        print("✅ Forced scale UP completed")
+        return 0
+
+    elif args.down:
+        print("🔻 FORCED SCALE DOWN - Ignoring traffic/latency thresholds")
+        print("-" * 50)
+
+        scaling_results = []
+        for region in COLD_REGIONS:
+            print(f"Force scaling DOWN {region} to 0 nodes...")
+            scale_result = scale_cluster_nodes(region=region, target_nodes=0)
+            scaling_results.append(scale_result)
+            print(f"  Result: {scale_result['status']}")
+            if scale_result.get('message'):
+                print(f"  Message: {scale_result['message']}")
+            if scale_result.get('error'):
+                print(f"  Error: {scale_result['error']}")
+            print()
+
+        print("✅ Forced scale DOWN completed")
+        return 0
+
+    # Normal operation - analyze traffic and latency
     print("📊 Scaling Thresholds:")
     print(f"  Scale UP: (Asia ≥{ASIA_REQUESTS_THRESHOLD_UPPER} req OR ≥{ASIA_REQUESTS_PERCENTAGE_THRESHOLD_UPPER}% AND Total ≥{MIN_TOTAL_REQUESTS_UPPER}) OR Latency ≥{LATENCY_THRESHOLD_UPPER_MS}ms")
     print(f"  Scale DOWN: Asia <{ASIA_REQUESTS_THRESHOLD_LOWER} req AND <{ASIA_REQUESTS_PERCENTAGE_THRESHOLD_LOWER}% AND Latency <{LATENCY_THRESHOLD_LOWER_MS}ms")
     print("-" * 50)
+
     try:
         # Get traffic metrics (using mock data for now)
         traffic_metrics = get_mock_traffic_data()
@@ -379,7 +441,6 @@ def main():
             print(f"  {region.capitalize()}: {count} requests ({percentage:.1f}%)")
         print(f"  Hot regions latency: {latency_metrics['hot_regions_avg_latency']}ms")
         print()
-
 
         # Make scaling decision
         scale_decision = should_scale_based_on_traffic(geographic_analysis, latency_metrics)

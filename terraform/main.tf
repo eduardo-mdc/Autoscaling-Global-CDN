@@ -220,37 +220,3 @@ module "loadbalancer" {
   enable_caa_records        = var.enable_caa_records
   additional_domains        = var.additional_domains
 }
-
-# ============================================================================
-# PHASE 5: COLD CLUSTER SCALING
-# ============================================================================
-
-module "cold_scaling" {
-  count = var.enable_cluster_autoscaling ? 1 : 0
-
-  source = "./modules/cold-scaling"
-
-  project_id   = var.project_id
-  project_name = var.project_name
-
-  hot_regions  = var.hot_regions
-  cold_regions = var.cold_regions
-
-  load_balancer_name = "${var.project_name}-https-lb-rule"
-  scaling_thresholds = var.scale_up_thresholds
-
-  enable_scheduled_scaling   = true
-  scaling_schedule_interval  = 5
-  schedule_timezone         = "UTC"
-  enable_manual_triggers    = true
-  enable_scaling_logs       = true
-
-  function_region      = var.regions[0]
-  function_source_path = "./functions/cold-cluster-scaler.zip"
-
-  depends_on = [
-    module.gke_hot,
-    module.gke_cold,
-    module.loadbalancer
-  ]
-}
