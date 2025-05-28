@@ -12,3 +12,6 @@ infrastructure/.env
 
 cold-autoscaler-2*.zip
 cold-autoscaler-2*
+*.csv
+*.gz
+*.json

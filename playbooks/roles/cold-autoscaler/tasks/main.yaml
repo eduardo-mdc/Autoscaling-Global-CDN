@@ -8,7 +8,7 @@
 
 - name: Deploy Cold Autoscaler script
   copy:
-    src: "{{ role_path }}/files/app.py"
+    src: "{{ role_path }}/files/main.py"
     dest: "{{ cold_autoscaler_dir }}/app.py"
     mode: '0755'
 
