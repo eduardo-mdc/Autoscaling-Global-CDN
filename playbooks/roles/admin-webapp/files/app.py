@@ -86,7 +86,20 @@ def upload():
 
         try:
             make_hls(video_path, hls_output_dir)
-            flash(f'Uploaded & converted: {original_filename}', 'success')
+
+            # Sync the content to regions
+            try:
+                result = subprocess.run(['/opt/content/scripts/sync-to-regions.sh'],
+                                        check=True,
+                                        capture_output=True,
+                                        text=True)
+                app.logger.info(f"Sync script output: {result.stdout}")
+                if result.stderr:
+                    app.logger.warning(f"Sync script stderr: {result.stderr}")
+                flash(f'Uploaded, converted & propagated to regions: {original_filename}', 'success')
+            except subprocess.SubprocessError as e:
+                flash(f'Content uploaded but region sync failed: {e}', 'warning')
+
         except Exception as e:
             flash(f'Error transcoding: {e}', 'danger')
             if os.path.exists(hls_output_dir):
@@ -99,7 +112,18 @@ def delete_video(filename):
     target = os.path.join(MOUNT_PATH, 'videos', filename)
     if os.path.isfile(target):
         os.remove(target)
-        flash(f'Deleted video: {filename}', 'warning')
+        try:
+            result = subprocess.run(['/opt/content/scripts/sync-to-regions.sh'],
+                                    check=True,
+                                    capture_output=True,
+                                    text=True)
+            app.logger.info(f"Sync script output: {result.stdout}")
+            if result.stderr:
+                app.logger.warning(f"Sync script stderr: {result.stderr}")
+            flash(f'Deleted video: {filename}', 'warning')
+        except subprocess.SubprocessError as e:
+            app.logger.error(f"Sync script failed: {e}")
+            flash(f'Deleted video, but sync to regions failed: {e}', 'danger')
     else:
         flash('Video not found', 'danger')
     return redirect(url_for('index'))

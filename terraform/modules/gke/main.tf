@@ -175,16 +175,6 @@ resource "google_container_node_pool" "primary" {
       enable_secure_boot          = false
       enable_integrity_monitoring = true
     }
-
-    # Taint cold cluster nodes to prevent scheduling until needed
-    dynamic "taint" {
-      for_each = var.cluster_type == "cold" ? [1] : []
-      content {
-        key    = "cluster-type"
-        value  = "cold"
-        effect = "NO_SCHEDULE"
-      }
-    }
   }
 
   # Lifecycle management

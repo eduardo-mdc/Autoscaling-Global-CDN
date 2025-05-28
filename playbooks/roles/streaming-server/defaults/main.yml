@@ -164,3 +164,6 @@ extra_annotations:
 
   # PVC binding timeout
   gcs_pvc_bind_timeout : 120
+
+# Basic Auth settings
+basic_auth_hash: "YWRtaW46JGFwcjEkc3ZSQ0I3ZkskSExiaWJIU0cuYTMyTWNmOWdQWWdFLwo="

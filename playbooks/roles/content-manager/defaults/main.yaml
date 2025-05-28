@@ -1,0 +1,58 @@
+# playbooks/roles/content-manager/defaults/main.yaml
+# Default variables for content management
+---
+
+# Content directories
+content_upload_dir: "/opt/content/uploads"
+content_scripts_dir: "/opt/content/scripts"
+content_logs_dir: "/opt/content/logs"
+content_temp_dir: "/opt/content/temp"
+
+# Required packages for content management
+content_packages:
+  - curl
+  - wget
+  - unzip
+  - jq
+  - tree
+  - rsync
+  - parallel  # For parallel uploads
+
+# Content sync configuration
+sync_parallel_processes: 4
+sync_delete_extra: true
+sync_preserve_timestamps: true
+sync_recursive: true
+
+# Content validation
+validate_uploads: true
+allowed_video_extensions:
+  - ".mp4"
+  - ".mkv"
+  - ".avi"
+  - ".mov"
+  - ".wmv"
+  - ".flv"
+  - ".webm"
+  - ".m4v"
+
+# Bucket sync options
+gsutil_sync_options: "-m rsync -r -d"
+gsutil_parallel_uploads: true
+gsutil_parallel_threads: 4
+
+# Content logging
+enable_content_logging: true
+log_retention_days: 30
+
+# Notification settings (for future use)
+enable_sync_notifications: false
+notification_webhook: ""
+
+# Content size limits (optional warnings)
+max_file_size_gb: 10
+warn_large_files: true
+
+# Backup settings
+create_local_backup: false
+backup_directory: "/opt/content/backup"

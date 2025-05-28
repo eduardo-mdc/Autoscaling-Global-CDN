@@ -1,4 +1,15 @@
 # playbooks/roles/streaming-server/templates/streaming-ingress.yaml.j2
+apiVersion: v1
+kind: Secret
+metadata:
+  name: basic-auth-secret
+  namespace: {{ app_namespace }}
+type: Opaque
+data:
+  # Generate with: htpasswd -c auth admin
+  # Then: cat auth | base64 -w 0
+  auth: {{ basic_auth_hash  }}
+---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -8,40 +19,34 @@ metadata:
     app: {{ app_name }}
     environment: {{ deployment_environment | default('production') }}
     created-by: ansible
-    ingress-type: neg-only
+    ingress-type: auth-enabled
   annotations:
-    # GCP-specific annotations - NO global IP to avoid conflict
     kubernetes.io/ingress.class: "gce"
-
-    # Enable NEG (Network Endpoint Groups) for better load balancing
     cloud.google.com/neg: '{"ingress": true}'
-
-    # Backend configuration for health checks and timeouts
     cloud.google.com/backend-config: '{"default": "{{ project_name }}-backend-config"}'
 
-    # Allow HTTP traffic
-    kubernetes.io/ingress.allow-http: "true"
+    # Basic Auth for protected paths
+    nginx.ingress.kubernetes.io/auth-type: basic
+    nginx.ingress.kubernetes.io/auth-secret: basic-auth-secret
+    nginx.ingress.kubernetes.io/auth-realm: 'Authentication Required - {{ app_name }}'
 
-    # Ingress optimization annotations
-    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
-    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
-    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
-
+    # Server snippet to disable auth for public endpoints
+    nginx.ingress.kubernetes.io/server-snippet: |
+      location /health {
+        auth_basic off;
+      }
+      location /hls {
+        auth_basic off;
+      }
+      location /metrics {
+        auth_basic off;
+      }
 spec:
   rules:
-    # Default rule for all hosts (geographic routing)
+    # Default rule - works for any domain/IP
     - http:
         paths:
-          # Root path - Main page
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: {{ app_name }}
-                port:
-                  number: {{ app_http_port | default('80') | int }}
-
-          # Health endpoint - Exact match for load balancer health checks
+          # Public paths (no auth required)
           - path: /health
             pathType: Exact
             backend:
@@ -50,16 +55,6 @@ spec:
                 port:
                   number: {{ app_http_port | default('80') | int }}
 
-          # Metrics endpoint - Exact match for monitoring
-          - path: /metrics
-            pathType: Exact
-            backend:
-              service:
-                name: {{ app_name }}
-                port:
-                  number: {{ metrics_port | default('9090') | int }}
-
-          # HLS streaming endpoint - Prefix for all HLS files (.m3u8, .ts)
           - path: /hls
             pathType: Prefix
             backend:
@@ -68,57 +63,6 @@ spec:
                 port:
                   number: {{ app_http_port | default('80') | int }}
 
-          # Video files endpoint - Prefix for video storage
-          - path: /videos
-            pathType: Prefix
-            backend:
-              service:
-                name: {{ app_name }}
-                port:
-                  number: {{ app_http_port | default('80') | int }}
-
-          # Live streaming page - Prefix for live streaming interface
-          - path: /live
-            pathType: Prefix
-            backend:
-              service:
-                name: {{ app_name }}
-                port:
-                  number: {{ app_http_port | default('80') | int }}
-
-          # Static files endpoint - Prefix for general file serving
-          - path: /files
-            pathType: Prefix
-            backend:
-              service:
-                name: {{ app_name }}
-                port:
-                  number: {{ app_http_port | default('80') | int }}
-
-{% if domain_name is defined and domain_name != "" %}
-    # Domain-specific rule (if domain is configured)
-    - host: {{ domain_name }}
-      http:
-        paths:
-          # Root path
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: {{ app_name }}
-                port:
-                  number: {{ app_http_port | default('80') | int }}
-
-          # Health endpoint
-          - path: /health
-            pathType: Exact
-            backend:
-              service:
-                name: {{ app_name }}
-                port:
-                  number: {{ app_http_port | default('80') | int }}
-
-          # Metrics endpoint
           - path: /metrics
             pathType: Exact
             backend:
@@ -127,16 +71,7 @@ spec:
                 port:
                   number: {{ metrics_port | default('9090') | int }}
 
-          # HLS streaming
-          - path: /hls
-            pathType: Prefix
-            backend:
-              service:
-                name: {{ app_name }}
-                port:
-                  number: {{ app_http_port | default('80') | int }}
-
-          # Video files
+          # Protected paths (require basic auth)
           - path: /videos
             pathType: Prefix
             backend:
@@ -145,8 +80,7 @@ spec:
                 port:
                   number: {{ app_http_port | default('80') | int }}
 
-          # Live streaming page
-          - path: /live
+          - path: /admin
             pathType: Prefix
             backend:
               service:
@@ -154,7 +88,6 @@ spec:
                 port:
                   number: {{ app_http_port | default('80') | int }}
 
-          # Static files
           - path: /files
             pathType: Prefix
             backend:
@@ -163,10 +96,15 @@ spec:
                 port:
                   number: {{ app_http_port | default('80') | int }}
 
-    # WWW subdomain (if domain is configured)
-    - host: www.{{ domain_name }}
-      http:
-        paths:
+          - path: /live
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ app_name }}
+                port:
+                  number: {{ app_http_port | default('80') | int }}
+
+          # Root path (protected)
           - path: /
             pathType: Prefix
             backend:
@@ -174,4 +112,3 @@ spec:
                 name: {{ app_name }}
                 port:
                   number: {{ app_http_port | default('80') | int }}
-{% endif %}

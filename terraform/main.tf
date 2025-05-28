@@ -193,7 +193,7 @@ module "bastion" {
   project_id     = var.project_id
   project_name   = var.project_name
   region         = each.key
-  machine_type   = "e2-medium"
+  machine_type   = "e2-small"
   admin_username = var.admin_username
   ssh_public_key = file(var.ssh_public_key_path)
 

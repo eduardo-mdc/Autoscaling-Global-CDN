@@ -76,6 +76,68 @@ resource "google_compute_health_check" "default" {
   }
 }
 
+# Cloud Armor security policy with essential WAF rules
+resource "google_compute_security_policy" "waf_policy" {
+  name        = "${var.project_name}-waf-policy"
+  description = "Essential WAF protection for streaming platform"
+
+  # Default allow rule
+  rule {
+    action   = "allow"
+    priority = "2147483647"
+    match {
+      versioned_expr = "SRC_IPS_V1"
+      config {
+        src_ip_ranges = ["*"]
+      }
+    }
+    description = "Default allow"
+  }
+
+  # Block XSS
+  rule {
+    action   = "deny(403)"
+    priority = "1001"
+    match {
+      expr {
+        expression = "evaluatePreconfiguredExpr('xss-stable')"
+      }
+    }
+    description = "Block XSS"
+  }
+
+  # Rate limiting - 200 requests per minute per IP
+  rule {
+    action   = "rate_based_ban"
+    priority = "1100"
+    match {
+      versioned_expr = "SRC_IPS_V1"
+      config {
+        src_ip_ranges = ["*"]
+      }
+    }
+    rate_limit_options {
+      conform_action = "allow"
+      exceed_action  = "deny(429)"
+      enforce_on_key = "IP"
+      rate_limit_threshold {
+        count        = 200
+        interval_sec = 60
+      }
+      ban_duration_sec = 180
+    }
+    description = "Rate limit: 200/min per IP"
+  }
+
+  # DDoS protection
+  adaptive_protection_config {
+    layer_7_ddos_defense_config {
+      enable = true
+    }
+  }
+}
+
+
 # Backend service with location-based balancing - SIMPLIFIED
 resource "google_compute_backend_service" "default" {
   name                  = "${var.project_name}-backend-service"
@@ -86,6 +148,9 @@ resource "google_compute_backend_service" "default" {
   load_balancing_scheme = "EXTERNAL"
 
   health_checks = [google_compute_health_check.default.id]
+
+  # Add Cloud Armor security policy
+  security_policy = google_compute_security_policy.waf_policy.id
 
   # Connection draining
   connection_draining_timeout_sec = 60
