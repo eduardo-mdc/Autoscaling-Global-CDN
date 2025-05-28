@@ -19,7 +19,6 @@
 - name: Phase 2 - Deploy Streaming Application
   hosts: bastions
   become: yes
-  serial: 1
   tags: ['phase2', 'deploy']
   tasks:
     - name: Create namespace

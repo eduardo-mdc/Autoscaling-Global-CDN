@@ -90,31 +90,33 @@ data:
                 try_files $uri $uri/live-index.html =404;
             }
 
-            # HLS streaming endpoint
             location /hls/ {
-                limit_req zone=hls burst=20 nodelay;
-                alias /tmp/hls/;
-
-                location ~ \.m3u8$ {
-                    add_header 'Content-Type' 'application/vnd.apple.mpegurl' always;
-                    add_header 'Cache-Control' 'no-cache' always;
-                    add_header 'Access-Control-Allow-Origin' '*' always;
-                }
-
-                location ~ \.ts$ {
-                    add_header 'Content-Type' 'video/mp2t' always;
-                    add_header 'Cache-Control' 'max-age=3600' always;
-                    add_header 'Access-Control-Allow-Origin' '*' always;
-                }
-
-                autoindex on;
+                limit_req          zone=hls burst=20 nodelay;
+                autoindex          on;
                 autoindex_exact_size off;
                 autoindex_localtime on;
             }
 
+            # 2) Serve .m3u8 playlists from the GCS CSI mount,
+            #    capturing any sub-folder name in $1
+            location ~ ^/hls/(.+\.m3u8)$ {
+                alias /mnt/videos/hls/$1;
+                add_header 'Content-Type'                'application/vnd.apple.mpegurl' always;
+                add_header 'Cache-Control'               'no-cache'                      always;
+                add_header 'Access-Control-Allow-Origin' '*'                            always;
+            }
+
+            # 3) Serve .ts segments the same way
+            location ~ ^/hls/(.+\.ts)$ {
+                alias /mnt/videos/hls/$1;
+                add_header 'Content-Type'                'video/mp2t'                   always;
+                add_header 'Cache-Control'               'max-age=3600'                 always;
+                add_header 'Access-Control-Allow-Origin' '*'                            always;
+            }
+
             # Video files from storage
             location /videos/ {
-                alias /mnt/videos/;
+                alias /mnt/videos/videos/;
 
                 location ~ \.(mp4|mkv|avi|mov|wmv|flv|webm|m4v)$ {
                     add_header 'Content-Type' 'video/mp4' always;
