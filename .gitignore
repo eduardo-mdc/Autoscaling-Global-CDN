@@ -9,3 +9,5 @@ infrastructure/.env
 /infrastructure/terraform.tfstate.backup
 /infrastructure/tfplan
 /infrastructure/secret-vars.tf
+
+cold-autoscaler-2*.zip

@@ -33,8 +33,8 @@ resource "google_storage_bucket" "function_source" {
 
 data "archive_file" "function_source" {
   type        = "zip"
-  source_dir  = var.function_source_path
-  output_path = "${path.module}/functions/cold-autoscaler.zip"
+  source_dir  = "./functions/cold-autoscaler"  # Directory with source files
+  output_path = "./functions/cold-autoscaler-${timestamp()}.zip"
 }
 
 # Upload function source code

@@ -127,7 +127,7 @@ resource "google_container_node_pool" "primary" {
   # Node management - more aggressive for cold clusters
   management {
     auto_repair  = true
-    auto_upgrade = var.cluster_type == "hot" ? true : false  # Pause upgrades for cold
+    auto_upgrade = true
   }
 
   # Upgrade settings

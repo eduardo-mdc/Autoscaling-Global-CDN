@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Environment variables
+# Environment variables #t
 PROJECT_ID = os.environ.get('PROJECT_ID')
 HOT_REGIONS = os.environ.get('HOT_REGIONS', '').split(',')
 COLD_REGIONS = os.environ.get('COLD_REGIONS', '').split(',')
