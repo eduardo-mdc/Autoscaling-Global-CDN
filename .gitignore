@@ -11,3 +11,4 @@ infrastructure/.env
 /infrastructure/secret-vars.tf
 
 cold-autoscaler-2*.zip
+cold-autoscaler-2*
