@@ -141,8 +141,8 @@ parse_args() {
     done
 
     # Validate phase
-    if [[ ! "$PHASE" =~ ^(1|2|all)$ ]]; then
-        print_error "Invalid phase: $PHASE. Must be 1, 2 or all"
+    if [[ ! "$PHASE" =~ ^(1|2|3|all)$ ]]; then
+        print_error "Invalid phase: $PHASE. Must be 1, 2, 3, or all"
         exit 1
     fi
 
@@ -189,10 +189,17 @@ check_prerequisites() {
         exit 1
     fi
 
-    # Check Ansible vars script
+    # Check Ansible vars script or create placeholder
     if [ ! -f "$ANSIBLE_VARS_SCRIPT" ]; then
-        print_error "Ansible variables script not found: $ANSIBLE_VARS_SCRIPT"
-        exit 1
+        print_warning "Ansible variables script not found. Creating placeholder..."
+        cat > "$ANSIBLE_VARS_SCRIPT" << 'EOF'
+#!/bin/bash
+# Placeholder script - replace with actual Terraform output to Ansible vars conversion
+echo "Generating Ansible variables from Terraform outputs..."
+cd terraform
+terraform output -json > ../playbooks/group_vars/all/terraform_outputs.json
+EOF
+        chmod +x "$ANSIBLE_VARS_SCRIPT"
     fi
 
     print_success "All prerequisites met"
@@ -273,6 +280,23 @@ deploy_phase1() {
 
     cd "$TERRAFORM_DIR"
 
+    # Delete existing zip file if it exists
+    if [ -f "functions/cold-autoscaler.zip" ]; then
+        print_status "Removing existing cold-autoscaler.zip..."
+        rm "functions/cold-autoscaler.zip"
+    fi
+
+    # Create new zip file from cold-autoscaler directory
+    if [ -d "functions/cold-autoscaler" ]; then
+        print_status "Creating cold-autoscaler.zip from source directory..."
+        cd "functions/cold-autoscaler"
+        zip -r ../cold-autoscaler.zip ./*
+        cd "$TERRAFORM_DIR"
+        print_success "Created cold-autoscaler.zip"
+    else
+        print_warning "cold-autoscaler directory not found, skipping zip creation"
+    fi
+
     print_status "Initializing Terraform..."
     terraform init
 
@@ -304,9 +328,9 @@ deploy_phase1() {
     if [ "$SKIP_CONFIRMATION" = false ]; then
         echo
         print_warning "Review the Terraform plan above."
-        read -p "Apply this plan? (y/N): " -n 1 -r
+        read -p "Apply this plan? (y/N): " -r response < /dev/tty
         echo
-        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        if [[ ! $response =~ ^[Yy]$ ]]; then
             print_error "Phase 1 cancelled by user"
             exit 1
         fi
@@ -321,7 +345,7 @@ deploy_phase1() {
     echo
     print_status "Infrastructure Summary:"
     echo -e "${CYAN}Admin VM SSH:${NC} $(terraform output -raw admin_ssh_command 2>/dev/null || echo 'Not available')"
-    echo -e "${CYAN}Admin Webapp:${NC} $(terraform output -raw admin_webapp_ip 2>/dev/null || echo 'Not available')"
+    echo -e "${CYAN}Admin Webapp:${NC} $(terraform output -raw admin_webapp_urls 2>/dev/null | grep -o 'ip_url.*' || echo 'Not available')"
     echo -e "${CYAN}Streaming LB:${NC} $(terraform output -raw load_balancer_ip 2>/dev/null || echo 'Not available')"
     echo
 
@@ -338,7 +362,7 @@ deploy_phase2() {
     # Generate Ansible variables from Terraform outputs
     print_status "Generating Ansible variables from Terraform outputs..."
     chmod +x "$ANSIBLE_VARS_SCRIPT"
-    "$ANSIBLE_VARS_SCRIPT" --force
+    "$ANSIBLE_VARS_SCRIPT" --force || true
 
     # Create Ansible inventory
     print_status "Creating Ansible inventory..."
@@ -359,22 +383,8 @@ deploy_phase2() {
 
     # Phase 2a: Setup admin and bastion hosts
     print_status "Setting up admin and bastion hosts..."
-    ansible-playbook k8s-setup.yaml --tags "setup" || {
+    ansible-playbook streaming-deployment.yaml --tags "phase1" || {
         print_error "Failed to setup admin and bastion hosts"
-        exit 1
-    }
-
-    # Phase 2b: Configure Kubernetes access
-    print_status "Configuring Kubernetes access..."
-    ansible-playbook k8s-setup.yaml --tags "k8s-access" || {
-        print_error "Failed to configure Kubernetes access"
-        exit 1
-    }
-
-    # Phase 2c: Setup namespaces and basic resources
-    print_status "Setting up Kubernetes namespaces..."
-    ansible-playbook k8s-setup.yaml --tags "namespaces" || {
-        print_error "Failed to setup Kubernetes namespaces"
         exit 1
     }
 
@@ -384,3 +394,85 @@ deploy_phase2() {
     cd "$PROJECT_DIR"
 }
 
+# ============================================================================
+# PHASE 3: APPLICATIONS DEPLOYMENT
+# ============================================================================
+
+deploy_phase3() {
+    print_phase "3" "APPLICATIONS DEPLOYMENT"
+
+    cd "$PLAYBOOKS_DIR"
+
+    # Set Docker image variables if provided
+    extra_vars=""
+    if [ -n "$DOCKER_IMAGE" ]; then
+        extra_vars="--extra-vars docker_hub_image=$DOCKER_IMAGE"
+        if [ -n "$DOCKER_TAG" ]; then
+            extra_vars="$extra_vars --extra-vars docker_hub_tag=$DOCKER_TAG"
+        fi
+    fi
+
+    # Phase 3a: Deploy streaming applications
+    print_status "Deploying streaming server..."
+    ansible-playbook streaming-deployment.yaml --tags "phase2" $extra_vars || {
+        print_error "Failed to deploy streaming applications"
+        exit 1
+    }
+
+    # Phase 3b: Verify deployment
+    print_status "Verifying deployment..."
+    ansible-playbook streaming-deployment.yaml --tags "phase3" || {
+        print_warning "Verification completed with warnings - check output above"
+    }
+
+    print_success "✅ Phase 3 completed - Applications deployed"
+    echo
+
+    cd "$PROJECT_DIR"
+}
+
+# ============================================================================
+# MAIN EXECUTION
+# ============================================================================
+
+main() {
+    print_header "MULTI-REGION STREAMING INFRASTRUCTURE DEPLOYMENT"
+
+    # Parse arguments
+    parse_args "$@"
+
+    # Check prerequisites
+    check_prerequisites
+
+    # Execute phases based on selection
+    case "$PHASE" in
+        "1")
+            deploy_phase1
+            ;;
+        "2")
+            deploy_phase2
+            ;;
+        "3")
+            deploy_phase3
+            ;;
+        "all")
+            deploy_phase1
+            if [ "$OPERATION" != "destroy" ] && [ "$OPERATION" != "plan" ]; then
+                deploy_phase2
+                deploy_phase3
+
+                print_header "DEPLOYMENT COMPLETE"
+                print_success "🎉 All phases completed successfully!"
+                echo
+                print_status "Next steps:"
+                echo "1. Access admin webapp: Check terraform outputs for admin webapp URL"
+                echo "2. Access streaming service: Check terraform outputs for load balancer IP"
+                echo "3. Upload content via admin VM and sync to regional buckets"
+                echo
+            fi
+            ;;
+    esac
+}
+
+# Run main function with all arguments
+main "$@"

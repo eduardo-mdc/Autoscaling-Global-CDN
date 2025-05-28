@@ -15,22 +15,41 @@ output "admin_ssh_command" {
 }
 
 output "gke_clusters" {
-  description = "Map of GKE cluster details by region"
-  value = {
-    for region in var.regions :
-    region => {
-      cluster_name = module.gke[region].cluster_name
-      endpoint     = module.gke[region].cluster_endpoint
+  description = "Map of GKE cluster details by region and type (hot/cold)"
+  value = merge(
+    {
+      for region in var.hot_regions :
+      "${region} (hot)" => {
+        cluster_name = module.gke_hot[region].cluster_name
+        endpoint     = module.gke_hot[region].cluster_endpoint
+        type         = "hot"
+      }
+    },
+    {
+      for region in var.cold_regions :
+      "${region} (cold)" => {
+        cluster_name = module.gke_cold[region].cluster_name
+        endpoint     = module.gke_cold[region].cluster_endpoint
+        type         = "cold"
+      }
     }
-  }
+  )
 }
 
 output "gke_connect_commands" {
   description = "Commands to connect to each GKE cluster from admin VM"
-  value = {
-    for region in var.regions :
-    region => "gcloud container clusters get-credentials ${module.gke[region].cluster_name} --region ${region} --project ${var.project_id}"
-  }
+  value = merge(
+    {
+      for region in var.hot_regions :
+      "${region} (hot)" =>
+      "gcloud container clusters get-credentials ${module.gke_hot[region].cluster_name} --region ${region} --project ${var.project_id}"
+    },
+    {
+      for region in var.cold_regions :
+      "${region} (cold)" =>
+      "gcloud container clusters get-credentials ${module.gke_cold[region].cluster_name} --region ${region} --project ${var.project_id}"
+    }
+  )
 }
 
 output "load_balancer_ip" {

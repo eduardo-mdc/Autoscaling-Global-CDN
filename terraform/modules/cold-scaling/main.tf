@@ -31,15 +31,20 @@ resource "google_storage_bucket" "function_source" {
   depends_on = [google_project_service.required_apis]
 }
 
+data "archive_file" "function_source" {
+  type        = "zip"
+  source_dir  = var.function_source_path
+  output_path = "${path.module}/functions/cold-autoscaler.zip"
+}
+
 # Upload function source code
 resource "google_storage_bucket_object" "function_code" {
   name   = "cold-cluster-scaler-${formatdate("YYYY-MM-DD-hhmm", timestamp())}.zip"
   bucket = google_storage_bucket.function_source.name
-  source = var.function_source_path
+  source = data.archive_file.function_source.output_path
 
-  # Force update when source changes
   lifecycle {
-    replace_triggered_by = [var.function_source_path]
+    replace_triggered_by = [data.archive_file.function_source]
   }
 }
 
@@ -85,12 +90,8 @@ resource "google_cloudfunctions_function" "cold_cluster_scaler" {
   source_archive_object = google_storage_bucket_object.function_code.name
   entry_point          = "scale_cold_cluster"
 
-  # HTTP trigger for flexibility
-  trigger {
-    http_trigger {
-      security_level = "SECURE_ALWAYS"
-    }
-  }
+  trigger_http = true
+  https_trigger_security_level = "SECURE_OPTIONAl"
 
   # Environment variables for scaling logic
   environment_variables = {

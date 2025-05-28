@@ -35,20 +35,15 @@ output "scaling_configuration" {
   }
 }
 
-# Commands for manual operation
+locals {
+  scale_up_message = jsonencode({
+    action = "scale_up"
+    region = "asia-southeast1"
+  })
+}
+
 output "manual_scaling_commands" {
-  description = "Commands to manually trigger scaling"
   value = {
-    test_function = "curl -X POST ${google_cloudfunctions_function.cold_cluster_scaler.https_trigger_url}"
-
-    view_logs = "gcloud functions logs read ${google_cloudfunctions_function.cold_cluster_scaler.name} --limit 20"
-
-    trigger_scale_up = var.enable_manual_triggers ?
-      "gcloud pubsub topics publish ${google_pubsub_topic.manual_scaling[0].name} --message='{\"action\":\"scale_up\",\"region\":\"asia-southeast1\"}'" :
-      "Manual triggers not enabled"
-
-    check_scheduler = var.enable_scheduled_scaling ?
-      "gcloud scheduler jobs describe ${google_cloud_scheduler_job.scaler_job[0].name}" :
-      "Scheduled scaling not enabled"
+    trigger_scale_up = var.enable_manual_triggers ? "gcloud pubsub topics publish ${google_pubsub_topic.manual_scaling[0].name} --message='${local.scale_up_message}'" : ""
   }
 }

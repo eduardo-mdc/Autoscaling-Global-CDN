@@ -61,6 +61,23 @@ resource "google_container_cluster" "cluster" {
   workload_identity_config {
     workload_pool = "${var.project_id}.svc.id.goog"
   }
+  # Enable more monitoring for hot clusters
+  dynamic "monitoring_config" {
+    for_each = var.cluster_type == "hot" ? [1] : []
+    content {
+      enable_components = ["SYSTEM_COMPONENTS", "APISERVER", "CONTROLLER_MANAGER", "SCHEDULER"]
+    }
+  }
+
+  # Enable more logging for hot clusters
+  dynamic "logging_config" {
+    for_each = var.cluster_type == "hot" ? [1] : []
+    content {
+      enable_components = ["SYSTEM_COMPONENTS", "WORKLOADS", "APISERVER"]
+    }
+  }
+
+
 
   # Cluster addons - vary by cluster type
   addons_config {
@@ -74,22 +91,6 @@ resource "google_container_cluster" "cluster" {
 
     gcs_fuse_csi_driver_config {
       enabled = true
-    }
-
-    # Enable more monitoring for hot clusters
-    dynamic "monitoring_config" {
-      for_each = var.cluster_type == "hot" ? [1] : []
-      content {
-        enable_components = ["SYSTEM_COMPONENTS", "APISERVER", "CONTROLLER_MANAGER", "SCHEDULER"]
-      }
-    }
-
-    # Enable more logging for hot clusters
-    dynamic "logging_config" {
-      for_each = var.cluster_type == "hot" ? [1] : []
-      content {
-        enable_components = ["SYSTEM_COMPONENTS", "WORKLOADS", "APISERVER"]
-      }
     }
   }
 

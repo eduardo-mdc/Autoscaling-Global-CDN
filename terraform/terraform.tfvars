@@ -27,7 +27,7 @@ additional_domains        = []  # Add any additional domains here
 # Storage Configuration
 environment                    = "production"
 master_bucket_location         = "EU"  # EU since primary region is europe-west4
-enable_storage_versioning      = true   # Keep versions of uploaded content
+enable_storage_versioning      = false   # Keep versions of uploaded content
 enable_regional_storage_versioning = false  # Cache buckets don't need versioning
 enable_storage_lifecycle        = false # Manual content management
 enable_cache_lifecycle          = false # Don't auto-delete cached content
@@ -39,6 +39,7 @@ storage_force_destroy           = true # False -> Protect against accidental del
 admin_iap_members = ["user:eduardo.mmd.correia@gmail.com","user:alfilipe.it@gmail.com"]
 oauth_client_id = "313506890289-306orl15c02jl7henbtc5c7ln094b0fa.apps.googleusercontent.com"
 oauth_client_secret = "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"
+admin_allowed_ips = ["0.0.0.0/0"]  # Restrict this to your IP range
 
 
 # HOT/COLD CLUSTER CONFIGURATION
@@ -82,25 +83,5 @@ scale_up_thresholds = {
   scale_down_latency_ms        = 200  # Scale down if latency <200ms
 }
 
-# Domain and SSL configuration
-domain_name         = "adm-cdn.pt"
-enable_regional_subdomains = false
-enable_caa_records        = true
-additional_domains        = []
 
-# Storage Configuration
-environment                    = "production"
-master_bucket_location         = "EU"
-enable_storage_versioning      = true
-enable_regional_storage_versioning = false
-enable_storage_lifecycle        = false
-enable_cache_lifecycle          = false
-enable_bucket_notifications     = false
-storage_public_access_prevention = "enforced"
-storage_force_destroy           = true
 
-# Security Configuration
-admin_allowed_ips = ["0.0.0.0/0"]  # Restrict this to your IP range
-admin_iap_members = ["user:eduardo.mmd.correia@gmail.com","user:alfilipe.it@gmail.com"]
-oauth_client_id = "313506890289-306orl15c02jl7henbtc5c7ln094b0fa.apps.googleusercontent.com"
-oauth_client_secret = "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"

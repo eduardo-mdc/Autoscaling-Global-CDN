@@ -6,15 +6,15 @@
   become: yes
   tags: ['phase1', 'setup']
   roles:
-    #- common
-    #- role: gcloud
-    #  when: inventory_hostname in groups['admin']
-    #- role: content-manager
-    #  when: inventory_hostname in groups['admin']
+    - common
+    - role: gcloud
+      when: inventory_hostname in groups['admin']
+    - role: content-manager
+      when: inventory_hostname in groups['admin']
     - role: admin-webapp
       when: inventory_hostname in groups['admin']
-    #- role: bastion
-    #  when: inventory_hostname in groups['bastions']
+    - role: bastion
+      when: inventory_hostname in groups['bastions']
 
 - name: Phase 2 - Deploy Streaming Application
   hosts: bastions
