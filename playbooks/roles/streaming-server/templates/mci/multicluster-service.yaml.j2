@@ -1,0 +1,19 @@
+apiVersion: networking.gke.io/v1
+kind: MultiClusterService
+metadata:
+  name: {{ app_name }}-mcs
+  namespace: {{ app_namespace }}
+  labels:
+    app: {{ app_name }}
+  annotations:
+    cloud.google.com/backend-config: '{"ports": {"80":"{{ project_name }}-backend-config"}}'
+spec:
+  template:
+    spec:
+      selector:
+        app: {{ app_name }}
+      ports:
+        - name: http
+          protocol: TCP
+          port: 80  # Changed back to port 80
+          targetPort: 80

@@ -1,148 +1,105 @@
 ---
-# File: playbooks/roles/streaming-server/tasks/deploy-mci.yml
-# Multi-Cluster Ingress setup for global load balancing
+# Multi-Cluster Ingress for streaming services
 
-- name: Get current region from bastion hostname
-  shell: "hostname | grep -o 'bastion-[^-]*' | cut -d'-' -f2 || echo 'unknown'"
+- name: Get current region for context
+  shell: "hostname | grep -o 'bastion-[^-]*-[^-]*' | cut -d'-' -f2-"
   register: current_region
 
 - name: Set bastion region fact
   set_fact:
     bastion_region: "{{ current_region.stdout }}"
 
-- name: Check if this is the config cluster (first region)
+- name: Check if this is the config cluster
   set_fact:
     is_config_cluster: "{{ bastion_region == regions[0] }}"
 
-- name: Debug MCI setup
-  debug:
-    msg: |
-      Region: {{ bastion_region }}
-      Is config cluster: {{ is_config_cluster }}
-      Config cluster: {{ regions[0] }}
+- name: Create MCI manifests directory
+  file:
+    path: "{{ manifests_dir }}/mci"
+    state: directory
+    mode: '0755'
 
-# Deploy service in all clusters
-- name: Create OAuth2 Service for MCI
+- name: Generate backend service manifest
+  template:
+    src: mci/backend-config.yaml.j2
+    dest: "{{ manifests_dir }}/mci/backend-config.yaml"
+
+- name: Generate streaming service manifest
+  template:
+    src: mci/streaming-service.yaml.j2
+    dest: "{{ manifests_dir }}/mci/streaming-service.yaml"
+
+- name: Apply backend service manifest
+  k8s :
+    state : present
+    src : "{{ manifests_dir }}/mci/backend-config.yaml"
+    wait : true
+    wait_timeout : 60
+
+- name: Sleep to allow backend service to be ready
+  pause:
+    seconds: 30
+
+- name: Apply streaming service for MCI
   k8s:
     state: present
-    definition:
-      apiVersion: v1
-      kind: Service
-      metadata:
-        name: oauth2-proxy-mci
-        namespace: "{{ app_namespace }}"
-        labels:
-          app: oauth2-proxy
-          region: "{{ bastion_region }}"
-        annotations:
-          cloud.google.com/neg: '{"ingress": true}'
-          cloud.google.com/backend-config: '{"default": "{{ project_name }}-backend-config"}'
-      spec:
-        type: ClusterIP
-        selector:
-          app: oauth2-proxy
-        ports:
-          - name: http
-            port: 4180
-            targetPort: 4180
-            protocol: TCP
+    src: "{{ manifests_dir }}/mci/streaming-service.yaml"
     wait: true
     wait_timeout: 60
 
-# Only deploy MCI resources in the config cluster
-- name: Setup Multi-Cluster Ingress (Config Cluster Only)
+- name: Sleep to allow backend service to be ready
+  pause:
+    seconds: 30
+
+
+- name: Setup MCI resources (Config Cluster Only)
   when: is_config_cluster
   block:
-    - name: Create MultiClusterService
+    - name: Generate MultiClusterService manifest
+      template:
+        src: mci/multicluster-service.yaml.j2
+        dest: "{{ manifests_dir }}/mci/multicluster-service.yaml"
+
+    - name: Generate MultiClusterIngress manifest
+      template:
+        src: mci/multicluster-ingress.yaml.j2
+        dest: "{{ manifests_dir }}/mci/multicluster-ingress.yaml"
+
+    - name: Generate ManagedCertificate manifest
+      template:
+        src: mci/managed-certificate.yaml.j2
+        dest: "{{ manifests_dir }}/mci/managed-certificate.yaml"
+
+    - name: Apply MultiClusterService
       k8s:
         state: present
-        definition:
-          apiVersion: networking.gke.io/v1
-          kind: MultiClusterService
-          metadata:
-            name: oauth2-proxy-mcs
-            namespace: "{{ app_namespace }}"
-            labels:
-              app: oauth2-proxy
-          spec:
-            template:
-              spec:
-                selector:
-                  app: oauth2-proxy
-                ports:
-                  - name: http
-                    protocol: TCP
-                    port: 4180
-                    targetPort: 4180
+        src: "{{ manifests_dir }}/mci/multicluster-service.yaml"
         wait: true
         wait_timeout: 120
 
-    - name: Create MultiClusterIngress
+    - name: Apply MultiClusterIngress
       k8s:
         state: present
-        definition:
-          apiVersion: networking.gke.io/v1
-          kind: MultiClusterIngress
-          metadata:
-            name: oauth2-proxy-mci
-            namespace: "{{ app_namespace }}"
-            labels:
-              app: oauth2-proxy
-            annotations:
-              networking.gke.io/static-ip: "{{ project_name }}-global-ip"
-              networking.gke.io/managed-certificates: "{{ project_name }}-ssl-cert"
-          spec:
-            template:
-              spec:
-                backend:
-                  serviceName: oauth2-proxy-mcs
-                  servicePort: 4180
-                rules:
-                  - host: "{{ domain_name }}"
-                    http:
-                      paths:
-                        - path: /*
-                          backend:
-                            serviceName: oauth2-proxy-mcs
-                            servicePort: 4180
+        src: "{{ manifests_dir }}/mci/multicluster-ingress.yaml"
         wait: false
 
-    - name: Create ManagedCertificate for MCI
+    - name: Sleep to allow MultiClusterIngress to be ready
+      pause:
+        seconds: 30
+
+    - name: Apply ManagedCertificate
       k8s:
         state: present
-        definition:
-          apiVersion: networking.gke.io/v1
-          kind: ManagedCertificate
-          metadata:
-            name: "{{ project_name }}-ssl-cert"
-            namespace: "{{ app_namespace }}"
-            labels:
-              app: oauth2-proxy
-          spec:
-            domains:
-              - "{{ domain_name }}"
-              - "www.{{ domain_name }}"
+        src: "{{ manifests_dir }}/mci/managed-certificate.yaml"
         wait: false
 
 - name: Display MCI status
   debug:
     msg: |
-      ✅ Multi-Cluster Ingress setup completed for region: {{ bastion_region }}
-      
+      ✅ MCI setup completed for region: {{ bastion_region }}
       {% if is_config_cluster %}
-      🎯 Config Cluster - MCI resources deployed:
-      - MultiClusterService: oauth2-proxy-mcs
-      - MultiClusterIngress: oauth2-proxy-mci
-      - ManagedCertificate: {{ project_name }}-ssl-cert
-      - Static IP: {{ project_name }}-global-ip
+      🎯 Config Cluster - Resources deployed
       {% else %}
-      📡 Member Cluster - Service registered for MCI
+      📡 Member Cluster - Service registered
       {% endif %}
-      
       🌐 Global URL: https://{{ domain_name }}
-      
-      ⏱️  Wait 5-10 minutes for MCI provisioning
-      
-      🔍 Check status:
-      kubectl get mci oauth2-proxy-mci -n {{ app_namespace }}
-      kubectl describe mci oauth2-proxy-mci -n {{ app_namespace }}

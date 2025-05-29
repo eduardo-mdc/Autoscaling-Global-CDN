@@ -1,0 +1,26 @@
+apiVersion: networking.gke.io/v1
+kind: MultiClusterIngress
+metadata:
+  name: {{ app_name }}-mci-lb
+  namespace: {{ app_namespace }}
+  labels:
+    app: {{ app_name }}
+  annotations:
+    networking.gke.io/static-ip: {{ mci_global_ip }}
+    networking.gke.io/pre-shared-certs: {{ managed_ssl_cert_name }}
+    kubectl.kubernetes.io/last-applied-configuration : |
+      {"apiVersion":"v1","kind":"Service","metadata":{"annotations":{"cloud.google.com/backend-config":"{\"default\": \"{{ project_name }}-backend-config\"}"}}}
+spec:
+  template:
+    spec:
+      backend:
+        serviceName: {{ app_name }}-mcs
+        servicePort: 80  # Changed back to port 80
+      rules:
+        - host: admin.{{ domain_name }}
+          http:
+            paths:
+              - path: /*
+                backend:
+                  serviceName: {{ app_name }}-mcs
+                  servicePort: 80  # Changed back to port 80

@@ -191,3 +191,7 @@ protected_endpoints:
   - "/admin"
   - "/files"
   - "/live"
+
+mci_global_ip: 34.110.245.13
+
+managed_ssl_cert_name: "uporto-cd-admin-webapp-ssl"
