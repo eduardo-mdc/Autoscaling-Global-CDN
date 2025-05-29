@@ -222,19 +222,35 @@ module "loadbalancer" {
 }
 
 
+# Add this to your existing main.tf
+
+# Admin Webapp Load Balancer with IAP
 module "admin_webapp" {
   source = "./modules/admin-webapp"
 
-  project_id         = var.project_id
-  project_name       = var.project_name
-  region            = var.regions[0]
-  master_bucket_name = module.storage.master_bucket_name
-  container_image   = "gcr.io/${var.project_id}/admin-webapp:latest"
-  regions           = var.regions
-  admin_iap_members = var.admin_iap_members
+  project_id   = var.project_id
+  project_name = var.project_name
+
+  # Domain and DNS
+  admin_domain    = "content-manager.${var.domain_name}"
+  dns_zone_name   = "uporto-cd-mci-zone"
+
+  # Admin VM details
+  admin_vm_self_link = "projects/${var.project_id}/zones/${var.zones[var.regions[0]]}/instances/${var.project_name}-admin"
+  admin_vm_zone      = var.zones[var.regions[0]]
+  admin_vm_network   = "${var.project_name}-admin-vpc"
+
+  # OAuth configuration
+  oauth_client_id     = var.oauth_client_id
+  oauth_client_secret = var.oauth_client_secret
+
+  # Authorized users
+  authorized_users = var.admin_iap_members
+
+  # Optional customization
+  health_check_path = "/health"
+  backend_timeout   = 60
 }
-
-
 
 module "fleet" {
   source = "./modules/fleet"

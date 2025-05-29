@@ -63,6 +63,7 @@
     mode: '0755'
   with_items:
     - "app.py"
+    - "cold_autoscaler.py"
     - "templates/"
 
 - name: Create systemd service file for Flask application

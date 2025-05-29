@@ -5,6 +5,7 @@ metadata:
   namespace: {{ app_namespace }}
   labels:
     app: {{ app_name }}
+    component: autoscaler
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
@@ -27,14 +28,22 @@ spec:
           averageUtilization: {{ hpa_target_memory | default('80') }}
   behavior:
     scaleUp:
-      stabilizationWindowSeconds: 60
+      stabilizationWindowSeconds: {{ scale_up_stabilization | default('60') }}
       policies:
         - type: Percent
-          value: 100
-          periodSeconds: 60
+          value: {{ scale_up_percent | default('100') }}
+          periodSeconds: {{ scale_up_period | default('60') }}
+        - type: Pods
+          value: {{ scale_up_pods | default('2') }}
+          periodSeconds: {{ scale_up_period | default('60') }}
+      selectPolicy: Max
     scaleDown:
-      stabilizationWindowSeconds: 300
+      stabilizationWindowSeconds: {{ scale_down_stabilization | default('300') }}
       policies:
         - type: Percent
-          value: 10
-          periodSeconds: 60
+          value: {{ scale_down_percent | default('10') }}
+          periodSeconds: {{ scale_down_period | default('60') }}
+        - type: Pods
+          value: {{ scale_down_pods | default('1') }}
+          periodSeconds: {{ scale_down_period | default('60') }}
+      selectPolicy: Min
