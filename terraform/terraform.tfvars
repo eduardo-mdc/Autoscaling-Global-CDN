@@ -8,7 +8,7 @@ max_nodes           = 3
 node_machine_type   = "e2-standard-2"  # 2 dedicated vCPU, 7.5GB RAM
 node_disk_size_gb   = 40
 node_disk_type      = "pd-standard"
-admin_machine_type  = "e2-standard-2"
+admin_machine_type  = "e2-medium"
 regions             = ["europe-west2", "us-south1", "asia-southeast1"]
 enable_cdn          = false
 
@@ -54,7 +54,7 @@ hot_cluster_config = {
   min_nodes         = 2             # Always have 2 nodes minimum
   max_nodes         = 3              # Scale up to 3 nodes
   initial_nodes     = 1              # Start with 3 nodes
-  machine_type      = "e2-standard-2" # More powerful (4 vCPU, 16GB RAM)
+  machine_type      = "e2-standard-2" # Standard size (2 vCPU, 8GB RAM)
   disk_size_gb      = 50            # Larger disk for caching
   disk_type         = "pd-standard"       # SSD for performance
 }

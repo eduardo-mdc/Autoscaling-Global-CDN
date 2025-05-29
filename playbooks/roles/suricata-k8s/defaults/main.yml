@@ -1,0 +1,3 @@
+---
+app_naeme: "suricata-ids"
+manifests_dir: "/opt/k8s-manifests/{{ app_name }}"

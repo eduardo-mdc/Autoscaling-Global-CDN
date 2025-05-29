@@ -20,7 +20,7 @@ resource "google_compute_instance" "bastion" {
     initialize_params {
       image = "ubuntu-os-cloud/ubuntu-2004-lts"
       size  = 30
-      type  = "pd-ssd"
+      type  = "pd-standard"
     }
   }
 

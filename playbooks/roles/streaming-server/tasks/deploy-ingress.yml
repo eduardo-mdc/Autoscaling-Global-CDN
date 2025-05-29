@@ -1,124 +1,105 @@
-# playbooks/roles/streaming-server/tasks/deploy-ingress.yml
 ---
-# Deploy NEG-only Ingress and connect to Terraform Load Balancer
+# Multi-Cluster Ingress for streaming services
 
 - name: Get current region for context
-  shell: "hostname | grep -o 'bastion-[^-]*' | cut -d'-' -f2 || echo 'unknown'"
+  shell: "hostname | grep -o 'bastion-[^-]*-[^-]*' | cut -d'-' -f2-"
   register: current_region
 
-- name: Generate backend configuration manifest
+- name: Set bastion region fact
+  set_fact:
+    bastion_region: "{{ current_region.stdout }}"
+
+- name: Check if this is the config cluster
+  set_fact:
+    is_config_cluster: "{{ bastion_region == regions[0] }}"
+
+- name: Create MCI manifests directory
+  file:
+    path: "{{ manifests_dir }}/mci"
+    state: directory
+    mode: '0755'
+
+- name: Generate backend service manifest
   template:
-    src: backend-config.yaml.j2
-    dest: "{{ manifests_dir }}/backend-config.yaml"
+    src: mci/backend-config.yaml.j2
+    dest: "{{ manifests_dir }}/mci/backend-config.yaml"
 
-- name: Generate NEG-only Ingress manifest
+- name: Generate streaming service manifest
   template:
-    src: streaming-ingress.yaml.j2
-    dest: "{{ manifests_dir }}/streaming-ingress.yaml"
+    src: mci/streaming-service.yaml.j2
+    dest: "{{ manifests_dir }}/mci/streaming-service.yaml"
 
-- name: Debug generated Ingress manifest (first 15 lines)
-  shell: "head -15 {{ manifests_dir }}/streaming-ingress.yaml"
-  register: ingress_manifest_preview
+- name: Apply backend service manifest
+  k8s :
+    state : present
+    src : "{{ manifests_dir }}/mci/backend-config.yaml"
+    wait : true
+    wait_timeout : 60
 
-- name: Show Ingress manifest preview
-  debug:
-    msg: |
-      Generated NEG-only Ingress manifest for region {{ current_region.stdout }}:
-      {{ ingress_manifest_preview.stdout_lines | join('\n') }}
+- name: Sleep to allow backend service to be ready
+  pause:
+    seconds: 30
 
-- name: Apply backend configuration
+- name: Apply streaming service for MCI
   k8s:
     state: present
-    src: "{{ manifests_dir }}/backend-config.yaml"
+    src: "{{ manifests_dir }}/mci/streaming-service.yaml"
     wait: true
     wait_timeout: 60
 
-- name: Apply NEG-only Ingress
-  k8s:
-    state: present
-    src: "{{ manifests_dir }}/streaming-ingress.yaml"
-    wait: false
-
-- name: Wait for NEGs to be created
-  pause:
-    seconds: 60
-    prompt: "Waiting for NEGs to be created in region {{ current_region.stdout }}..."
-
-- name: Get NEG status from service
-  shell: |
-    kubectl -n {{ app_namespace }} get svc {{ app_name }} -o jsonpath='{.metadata.annotations.cloud\.google\.com/neg-status}' 2>/dev/null || echo "{}"
-  register: neg_status_raw
-  changed_when: false
-
-- name: Parse NEG information
-  set_fact:
-    neg_info: "{{ neg_status_raw.stdout | from_json }}"
-  when: neg_status_raw.stdout != "{}"
-
-- name: Display NEG creation status
-  debug:
-    msg: |
-      🔗 NEG Status for {{ current_region.stdout }}:
-      {% if neg_info is defined and neg_info.network_endpoint_groups is defined %}
-      - NEG Name: {{ neg_info.network_endpoint_groups['80'] }}
-      - Zones: {{ neg_info.zones | join(', ') }}
-      {% else %}
-      - Status: NEGs not ready yet
-      {% endif %}
-
-- name: Connect NEGs to Terraform Load Balancer
-  shell: |
-    NEG_NAME="{{ neg_info.network_endpoint_groups['80'] }}"
-    for zone in {{ neg_info.zones | join(' ') }}; do
-      echo "Adding NEG $NEG_NAME from zone $zone to backend service"
-      gcloud compute backend-services add-backend {{ project_name }}-backend-service \
-        --network-endpoint-group=$NEG_NAME \
-        --network-endpoint-group-zone=$zone \
-        --balancing-mode=RATE \
-        --max-rate=100 \
-        --global || echo "NEG may already be added"
-    done
-  when: neg_info is defined and neg_info.network_endpoint_groups is defined
-  register: connect_negs_result
-
-- name: Display NEG connection results
-  debug:
-    msg: |
-      🔄 NEG Connection Results for {{ current_region.stdout }}:
-      {{ connect_negs_result.stdout_lines | default(['No NEGs to connect']) | join('\n') }}
-
-- name: Wait for backend service to update
+- name: Sleep to allow backend service to be ready
   pause:
     seconds: 30
-    prompt: "Waiting for backend service to update..."
 
-- name: Test Terraform Load Balancer
-  uri:
-    url: "http://{{ load_balancer_ip }}/health"
-    method: GET
-    headers:
-      Host: "{{ domain_name }}"
-    timeout: 10
-  register: lb_test
-  ignore_errors: yes
 
-- name: Verify deployment success
+- name: Setup MCI resources (Config Cluster Only)
+  when: is_config_cluster
+  block:
+    - name: Generate MultiClusterService manifest
+      template:
+        src: mci/multicluster-service.yaml.j2
+        dest: "{{ manifests_dir }}/mci/multicluster-service.yaml"
+
+    - name: Generate MultiClusterIngress manifest
+      template:
+        src: mci/multicluster-ingress.yaml.j2
+        dest: "{{ manifests_dir }}/mci/multicluster-ingress.yaml"
+
+    - name: Generate ManagedCertificate manifest
+      template:
+        src: mci/managed-certificate.yaml.j2
+        dest: "{{ manifests_dir }}/mci/managed-certificate.yaml"
+
+    - name: Apply MultiClusterService
+      k8s:
+        state: present
+        src: "{{ manifests_dir }}/mci/multicluster-service.yaml"
+        wait: true
+        wait_timeout: 120
+
+    - name: Apply MultiClusterIngress
+      k8s:
+        state: present
+        src: "{{ manifests_dir }}/mci/multicluster-ingress.yaml"
+        wait: false
+
+    - name: Sleep to allow MultiClusterIngress to be ready
+      pause:
+        seconds: 30
+
+    - name: Apply ManagedCertificate
+      k8s:
+        state: present
+        src: "{{ manifests_dir }}/mci/managed-certificate.yaml"
+        wait: false
+
+- name: Display MCI status
   debug:
     msg: |
-      ✅ NEG Integration Complete for {{ current_region.stdout }}
-      
-      📊 Summary:
-      - NEG-only Ingress: Created (no public endpoint)
-      - NEGs connected to Terraform LB: {{ 'Success' if connect_negs_result is defined else 'Pending' }}
-      - Terraform LB test: {{ 'Success' if lb_test.status == 200 else 'Failed' }}
-      
-      🎯 Your Terraform Load Balancer:
-      - IP: {{ load_balancer_ip }}
-      - Domain: {{ domain_name }}
-      - Test: curl -H "Host: {{ domain_name }}" http://{{ load_balancer_ip }}/health
-      
-      {% if lb_test.status != 200 %}
-      🔧 Troubleshooting:
-      - Check backend health: gcloud compute backend-services get-health {{ project_name }}-backend-service --global
-      - Check NEG endpoints: gcloud compute network-endpoint-groups list-network-endpoints {{ neg_info.network_endpoint_groups['80'] }} --zone={{ current_region.stdout }}-a
+      ✅ MCI setup completed for region: {{ bastion_region }}
+      {% if is_config_cluster %}
+      🎯 Config Cluster - Resources deployed
+      {% else %}
+      📡 Member Cluster - Service registered
       {% endif %}
+      🌐 Global URL: https://{{ domain_name }}

@@ -193,7 +193,7 @@ module "bastion" {
   project_id     = var.project_id
   project_name   = var.project_name
   region         = each.key
-  machine_type   = "e2-medium"
+  machine_type   = "e2-small"
   admin_username = var.admin_username
   ssh_public_key = file(var.ssh_public_key_path)
 
@@ -219,6 +219,36 @@ module "loadbalancer" {
   enable_regional_subdomains = var.enable_regional_subdomains
   enable_caa_records        = var.enable_caa_records
   additional_domains        = var.additional_domains
+}
+
+
+module "admin_webapp" {
+  source = "./modules/admin-webapp"
+
+  project_id         = var.project_id
+  project_name       = var.project_name
+  region            = var.regions[0]
+  master_bucket_name = module.storage.master_bucket_name
+  container_image   = "gcr.io/${var.project_id}/admin-webapp:latest"
+  regions           = var.regions
+}
+
+
+
+module "fleet" {
+  source = "./modules/fleet"
+
+  project_id               = var.project_id
+  project_name             = var.project_name
+  config_cluster_region    = var.hot_regions[0]  # First hot region is config cluster
+  member_cluster_regions   = concat(
+    slice(var.hot_regions, 1, length(var.hot_regions)),  # Other hot regions
+    var.cold_regions  # All cold regions
+  )
+  domain_name              = var.domain_name
+
+  # Ensure all clusters are created first
+  depends_on = [module.gke_hot, module.gke_cold]
 }
 
 # Create WAF security policy with Cloud Armor

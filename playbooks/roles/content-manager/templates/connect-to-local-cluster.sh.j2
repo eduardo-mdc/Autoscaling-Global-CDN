@@ -1,0 +1,57 @@
+# playbooks/roles/bastion/templates/connect-to-local-cluster.sh.j2
+#!/bin/bash
+
+# Script to connect to local GKE cluster from bastion host
+export USE_GKE_GCLOUD_AUTH_PLUGIN=True
+
+CLUSTER_NAME="{{ project_name }}-gke-{{ bastion_region }}"
+PROJECT_ID="{{ project_id }}"
+REGION="{{ bastion_region }}"
+
+echo "=== Connecting to Local GKE Cluster ==="
+echo "Bastion Region: $REGION"
+echo "Cluster: $CLUSTER_NAME"
+echo "Project: $PROJECT_ID"
+echo ""
+
+# Check if cluster exists and is accessible
+echo "Checking cluster status..."
+if ! gcloud container clusters describe $CLUSTER_NAME --region $REGION --project $PROJECT_ID >/dev/null 2>&1; then
+    echo "❌ Cannot access cluster $CLUSTER_NAME in region $REGION"
+    echo "This may be normal if you're accessing from the wrong bastion."
+    echo "Make sure you're on the bastion in region: $REGION"
+    exit 1
+fi
+
+echo "✅ Cluster is accessible from this bastion"
+
+# Get cluster credentials
+echo "Getting cluster credentials..."
+if gcloud container clusters get-credentials $CLUSTER_NAME --region $REGION --project $PROJECT_ID; then
+    echo "✅ Successfully obtained cluster credentials"
+
+    echo ""
+    echo "=== Cluster Information ==="
+    kubectl cluster-info --request-timeout=15s
+
+    echo ""
+    echo "=== Cluster Nodes ==="
+    kubectl get nodes -o wide
+
+    echo ""
+    echo "=== Current Context ==="
+    kubectl config current-context
+
+    echo ""
+    echo "🎉 Ready to use kubectl with $CLUSTER_NAME!"
+    echo ""
+    echo "Example commands:"
+    echo "  kubectl get pods --all-namespaces"
+    echo "  kubectl get services --all-namespaces"
+    echo "  kubectl get ingress --all-namespaces"
+
+else
+    echo "❌ Failed to get cluster credentials"
+    echo "Check that the cluster exists and this bastion has proper permissions"
+    exit 1
+fi

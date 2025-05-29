@@ -164,3 +164,34 @@ extra_annotations:
 
   # PVC binding timeout
   gcs_pvc_bind_timeout : 120
+
+# OAuth2 Proxy Configuration
+enable_oauth2_auth: true
+oauth_client_id: "313506890289-306orl15c02jl7henbtc5c7ln094b0fa.apps.googleusercontent.com"
+oauth_client_secret: "GOCSPX-vCrhDSDzxl6zcxIMGTm5d4f9xhV"
+# OAuth2 Proxy resource settings
+oauth_proxy_replicas: 2
+oauth_proxy_version: "v7.4.0"
+oauth_proxy_memory_request: "64Mi"
+oauth_proxy_cpu_request: "50m"
+oauth_proxy_memory_limit: "128Mi"
+oauth_proxy_cpu_limit: "100m"
+
+# Public endpoints (no auth required)
+public_endpoints:
+  - "/health"
+  - "/hls"
+  - "/metrics"
+  - "/oauth2"
+
+# Protected endpoints (OAuth required)
+protected_endpoints:
+  - "/"
+  - "/videos"
+  - "/admin"
+  - "/files"
+  - "/live"
+
+mci_global_ip: 34.110.245.13
+
+managed_ssl_cert_name: "uporto-cd-admin-webapp-ssl"

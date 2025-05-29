@@ -1,0 +1,42 @@
+#!/bin/bash
+# Sync content from master bucket to regional cache buckets
+
+set -euo pipefail
+
+MASTER_BUCKET="gs://{{ master_bucket_name }}"
+LOG_DIR="{{ content_logs_dir }}"
+LOG_FILE="$LOG_DIR/sync-regions-$(date +%Y%m%d-%H%M%S).log"
+
+mkdir -p "$LOG_DIR"
+
+echo "Syncing from master bucket to regional buckets"
+
+# Check if master bucket has content
+if ! gsutil ls "$MASTER_BUCKET/" >/dev/null 2>&1; then
+    echo "Error: Cannot access master bucket or bucket is empty: $MASTER_BUCKET"
+    echo "Run 'sync-master' first to upload content to the master bucket"
+    exit 1
+fi
+
+object_count=$(gsutil ls "$MASTER_BUCKET/**" 2>/dev/null | wc -l || echo "0")
+if [[ $object_count -eq 0 ]]; then
+    echo "No objects found in master bucket"
+    exit 0
+fi
+
+echo "Found $object_count objects in master bucket"
+
+# Regional buckets
+{% for region, bucket_name in regional_bucket_names.items() %}
+echo "Syncing to {{ region }} (gs://{{ bucket_name }})"
+if gsutil {{ gsutil_sync_options }} "$MASTER_BUCKET/" "gs://{{ bucket_name }}/" 2>&1 | tee -a "$LOG_FILE"; then
+    echo "✅ {{ region }} sync completed"
+else
+    echo "❌ {{ region }} sync failed"
+fi
+echo
+{% endfor %}
+
+echo "Regional sync completed"
+echo "Content available at: https://{{ domain_name }}/videos/"
+echo "Log: $LOG_FILE"

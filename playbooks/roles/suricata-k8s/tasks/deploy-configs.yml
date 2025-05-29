@@ -1,0 +1,56 @@
+---
+# Deploy ConfigMaps for HLS streaming
+# File: playbooks/roles/streaming-server/tasks/deploy-configmap.yml
+
+- name: Create manifests directory if it doesn't exist
+  file:
+    path: "{{ manifests_dir }}"
+    state: directory
+    mode: '0755'
+  register: dir_creation
+
+- name: Generate HLS nginx configuration
+  template:
+    src: nginx-hls-config.yaml.j2
+    dest: "{{ manifests_dir }}/nginx-hls-config.yaml"
+
+- name: Generate HTML content ConfigMap
+  template:
+    src: html-content-config.yaml.j2
+    dest: "{{ manifests_dir }}/html-content-config.yaml"
+
+- name: Apply nginx HLS configuration ConfigMap
+  k8s:
+    state: present
+    src: "{{ manifests_dir }}/nginx-hls-config.yaml"
+    wait: true
+    wait_timeout: 60
+
+- name: Apply HTML content ConfigMap
+  k8s:
+    state: present
+    src: "{{ manifests_dir }}/html-content-config.yaml"
+    wait: true
+    wait_timeout: 60
+
+- name: Verify ConfigMaps creation
+  k8s_info:
+    api_version: v1
+    kind: ConfigMap
+    namespace: "{{ app_namespace }}"
+    label_selectors:
+      - "app={{ app_name }}"
+  register: configmap_status
+
+- name: Display ConfigMap status
+  debug:
+    msg: |
+      📦 ConfigMaps Deployment Status:
+      
+      Created {{ configmap_status.resources | length }} ConfigMaps for {{ app_name }}:
+      {% for cm in configmap_status.resources %}
+      - {{ cm.metadata.name }}
+      {% endfor %}
+      
+      ✅ ConfigMaps ready for DaemonSet deployment
+      💡 HTTPS/SSL will be handled by the load balancer

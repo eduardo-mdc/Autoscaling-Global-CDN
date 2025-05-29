@@ -1,0 +1,44 @@
+#!/bin/bash
+# List content across all storage buckets
+
+set -euo pipefail
+
+MASTER_BUCKET="gs://{{ master_bucket_name }}"
+
+echo "=== Content Distribution Listing ==="
+echo
+
+# Master bucket
+echo "📦 Master Bucket: {{ master_bucket_name }}"
+if gsutil ls "$MASTER_BUCKET/" >/dev/null 2>&1; then
+    object_count=$(gsutil ls "$MASTER_BUCKET/**" 2>/dev/null | wc -l || echo "0")
+    echo "   Objects: $object_count"
+    if [[ $object_count -gt 0 ]]; then
+        echo "   Content:"
+        gsutil ls "$MASTER_BUCKET/**" 2>/dev/null | head -5 | while read file; do
+            filename=$(basename "$file")
+            echo "     📹 $filename"
+        done
+        if [[ $object_count -gt 5 ]]; then
+            echo "     ... and $((object_count - 5)) more files"
+        fi
+    fi
+else
+    echo "   Status: ❌ Not accessible"
+fi
+echo
+
+# Regional buckets
+echo "🌍 Regional Cache Buckets:"
+{% for region, bucket_name in regional_bucket_names.items() %}
+echo "   📍 {{ region }}: {{ bucket_name }}"
+if gsutil ls "gs://{{ bucket_name }}/" >/dev/null 2>&1; then
+    regional_count=$(gsutil ls "gs://{{ bucket_name }}/**" 2>/dev/null | wc -l || echo "0")
+    echo "      Objects: $regional_count ✅"
+else
+    echo "      Status: ❌ Not accessible"
+fi
+{% endfor %}
+
+echo
+echo "🌐 Web Access: https://{{ domain_name }}/videos/"

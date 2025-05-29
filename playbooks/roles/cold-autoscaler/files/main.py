@@ -150,7 +150,7 @@ def should_scale_based_on_traffic(geographic_analysis, latency_data=None):
             'should_scale': True,
             'reason': reason,
             'target_regions': ['asia-southeast1'],
-            'target_nodes': 1,
+            'target_nodes': 2,
             'trigger': 'latency' if high_latency and not (high_asia_requests or high_asia_percentage) else 'geographic_traffic'
         }
 
