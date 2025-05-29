@@ -26,10 +26,15 @@ resource "google_project_iam_member" "admin_webapp_storage" {
   member  = "serviceAccount:${google_service_account.admin_webapp.email}"
 }
 
-# Deploy Cloud Run service
 resource "google_cloud_run_service" "admin_webapp" {
   name     = "${var.project_name}-admin-webapp"
   location = var.region
+
+  metadata {
+    annotations = {
+      "run.googleapis.com/ingress" = "all"
+    }
+  }
 
   template {
     spec {
@@ -69,8 +74,8 @@ resource "google_cloud_run_service" "admin_webapp" {
 
         resources {
           limits = {
-            cpu    = "1000m"
-            memory = "512Mi"
+            cpu    = "4000m"
+            memory = "2096Mi"
           }
         }
       }
@@ -93,11 +98,13 @@ resource "google_cloud_run_service" "admin_webapp" {
   depends_on = [google_project_service.run_api]
 }
 
-# Allow unauthenticated access (you can restrict this)
-resource "google_cloud_run_service_iam_member" "admin_webapp_public" {
+# Grant specific users access to the Cloud Run service
+resource "google_cloud_run_service_iam_member" "admin_webapp_users" {
+  for_each = toset(var.admin_iap_members)
+
   service  = google_cloud_run_service.admin_webapp.name
   location = google_cloud_run_service.admin_webapp.location
   role     = "roles/run.invoker"
-  member   = "allUsers"
+  member   = each.value
 }
 

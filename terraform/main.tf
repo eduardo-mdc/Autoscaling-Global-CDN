@@ -231,6 +231,7 @@ module "admin_webapp" {
   master_bucket_name = module.storage.master_bucket_name
   container_image   = "gcr.io/${var.project_id}/admin-webapp:latest"
   regions           = var.regions
+  admin_iap_members = var.admin_iap_members
 }
 
 

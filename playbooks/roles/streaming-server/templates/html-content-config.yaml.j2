@@ -9,212 +9,909 @@ metadata:
 data:
   index.html: |
     <!DOCTYPE html>
-    <html lang="pt-BR">
+    <html lang="en" class="dark">
     <head>
-        <meta charset="UTF-8" />
-        <title>Bem-vindo à CDN</title>
-        <style>
-            body {
-                font-family: Arial, sans-serif;
-                text-align: center;
-                background: #0a1e3d;
-                color: white;
-                margin-top: 10vh;
-            }
-            h1 {
-                font-size: 3rem;
-            }
-            p {
-                font-size: 1.2rem;
-            }
-            .info {
-                margin-top: 2rem;
-                padding: 1rem;
-                background: rgba(255,255,255,0.1);
-                border-radius: 10px;
-                display: inline-block;
-            }
-            .links {
-                margin-top: 2rem;
-            }
-            .links a {
-                color: #4a9eff;
-                text-decoration: none;
-                margin: 0 1rem;
-                padding: 0.5rem 1rem;
-                border: 1px solid #4a9eff;
-                border-radius: 5px;
-                display: inline-block;
-                margin-top: 0.5rem;
-            }
-            .links a:hover {
-                background: #4a9eff;
-                color: white;
-            }
-        </style>
-    </head>
-    <body>
-    <h1>Conexão estabelecida com a CDN</h1>
-    <p>Você foi direcionado ao servidor da região: <strong id="region">{{ ansible_hostname | default('Unknown') }}</strong></p>
-
-    <div class="info">
-        <p><strong>Pod:</strong> <span id="pod-name">{{ ansible_hostname | default('streaming-server') }}</span></p>
-        <p><strong>Streaming Type:</strong> HLS</p>
-        <p><strong>Status:</strong> ✅ Online</p>
-    </div>
-
-    <div class="links">
-        <a href="/live/">🎬 Live Streaming</a>
-        <a href="/videos/">📹 Video Library</a>
-        <a href="/files/">📁 Static Files</a>
-        <a href="/hls/">🎵 HLS Streams</a>
-        <a href="/health">❤️ Health Check</a>
-    </div>
-
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Welcome to the CDN</title>
+    <script src="https://cdn.tailwindcss.com"></script>
     <script>
-        // Try to get pod info from environment if available
-        fetch('/api/pod-info')
-            .then(response => response.json())
-            .then(data => {
-                if (data.podName) document.getElementById('pod-name').textContent = data.podName;
-                if (data.region) document.getElementById('region').textContent = data.region;
-            })
-            .catch(() => {
-                // Fallback - try to detect region from hostname or other clues
-                const hostname = window.location.hostname;
-                if (hostname.includes('europe')) {
-                    document.getElementById('region').textContent = 'Europe West';
-                } else if (hostname.includes('asia')) {
-                    document.getElementById('region').textContent = 'Asia Southeast';
-                } else if (hostname.includes('us')) {
-                    document.getElementById('region').textContent = 'US South';
-                }
-            });
-    </script>
-    </body>
-    </html>
+    tailwind.config = {
+    darkMode: 'class',
+    theme: {
+      extend: {
+        colors: {
+          primary: '#4a9eff',
+          'primary-dark': '#3580cc',
+          'bg-dark': '#0a1e3d',
+          'bg-card': 'rgba(255,255,255,0.1)',
+          'bg-card-hover': 'rgba(255,255,255,0.2)',
+        },
+        animation: {
+          'fade-in': 'fadeIn 0.8s ease-in-out',
+          'slide-up': 'slideUp 0.6s ease-out',
+          'float': 'float 6s ease-in-out infinite',
+          'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+        },
+        keyframes: {
+          fadeIn: {
+            '0%': { opacity: '0', transform: 'translateY(20px)' },
+            '100%': { opacity: '1', transform: 'translateY(0)' },
+          },
+          slideUp: {
+            '0%': { transform: 'translateY(40px)', opacity: '0' },
+            '100%': { transform: 'translateY(0)', opacity: '1' },
+          },
+          float: {
+            '0%, 100%': { transform: 'translateY(0px)' },
+            '50%': { transform: 'translateY(-10px)' },
+          }
+        }
+      }
+    }
+    }
+      </script>
+      <link rel="stylesheet" href="/styles.css">
+      </head>
+      <body class="bg-bg-dark text-white min-h-screen font-sans overflow-x-hidden">
+      <!-- Background decoration -->
+      <div class="absolute inset-0 overflow-hidden pointer-events-none">
+      <div class="absolute -top-40 -right-40 w-80 h-80 bg-primary/20 rounded-full blur-3xl animate-pulse-slow"></div>
+    <div class="absolute -bottom-40 -left-40 w-80 h-80 bg-blue-500/20 rounded-full blur-3xl animate-pulse-slow" style="animation-delay: 1s;"></div>
+      </div>
 
+      <!-- Main Container -->
+      <div class="relative min-h-screen flex flex-col items-center justify-center px-4 py-8">
+      <!-- Header Section -->
+      <div class="text-center mb-12 animate-fade-in">
+      <div class="mb-6">
+      <div class="w-24 h-24 mx-auto mb-6 bg-gradient-to-br from-primary to-blue-500 rounded-2xl flex items-center justify-center shadow-2xl animate-float">
+      <svg class="w-12 h-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 4V2a1 1 0 011-1h8a1 1 0 011 1v2m-9 3v12a2 2 0 002 2h6a2 2 0 002-2V7M9 7h6M9 11h6M9 15h6"></path>
+      </svg>
+      </div>
+      </div>
+
+      <h1 class="text-4xl md:text-6xl font-bold mb-4 bg-gradient-to-r from-primary via-blue-400 to-purple-400 bg-clip-text text-transparent">
+      GPC Cloud hosted CDN
+      </h1>
+
+
+
+      <!-- Region Info -->
+      <div class="bg-bg-card backdrop-blur-sm rounded-2xl p-6 shadow-xl border border-white/10 max-w-md mx-auto animate-slide-up">
+      <div class="flex items-center justify-center gap-3 mb-3">
+      <div class="w-3 h-3 bg-green-400 rounded-full animate-pulse"></div>
+      </div>
+      <p class="text-lg">
+      <span class="text-gray-400">Connected to Region:</span>
+      <strong id="region" class="text-primary ml-2">{{ current_region | default('Unknown') }}</strong>
+      </p>
+      </div>
+      </div>
+
+      <!-- Navigation Links -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 max-w-5xl w-full mb-8 animate-slide-up" style="animation-delay: 0.2s;">
+      <!-- Live Streaming -->
+      <a href="/live-index.html" class="group bg-bg-card hover:bg-bg-card-hover backdrop-blur-sm rounded-2xl p-6 transition-all duration-300 hover:scale-105 hover:shadow-2xl border border-white/10 hover:border-primary/50">
+      <div class="flex flex-col items-center text-center">
+      <div class="w-16 h-16 bg-red-500/20 rounded-xl flex items-center justify-center mb-4 group-hover:bg-red-500/30 transition-colors">
+      <svg class="w-8 h-8 text-red-400" fill="currentColor" viewBox="0 0 24 24">
+      <path d="M8 5v14l11-7z"/>
+      </svg>
+      </div>
+      <h3 class="text-xl font-semibold mb-2 group-hover:text-primary transition-colors">🎬 Live Streaming</h3>
+      <p class="text-gray-400 text-sm group-hover:text-gray-300 transition-colors">Async HLS Streams</p>
+      </div>
+      </a>
+
+        <!-- Live Streaming -->
+        <a href="/playlist-viewer.html" class="group bg-bg-card hover:bg-bg-card-hover backdrop-blur-sm rounded-2xl p-6 transition-all duration-300 hover:scale-105 hover:shadow-2xl border border-white/10 hover:border-primary/50">
+            <div class="flex flex-col items-center text-center">
+                <div class="w-16 h-16 bg-purple-500/20 rounded-xl flex items-center justify-center mb-4 group-hover:bg-purple-500/30 transition-colors">
+                    <svg class="w-8 h-8 text-purple-400" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M8 5v14l11-7z"/>
+                    </svg>
+                </div>
+                <h3 class="text-xl font-semibold mb-2 group-hover:text-primary transition-colors">🎬 Playlist Stream</h3>
+                <p class="text-gray-400 text-sm group-hover:text-gray-300 transition-colors">Segmented Streams</p>
+            </div>
+        </a>
+
+      <!-- Video Library -->
+      <a href="/videos/" class="group bg-bg-card hover:bg-bg-card-hover backdrop-blur-sm rounded-2xl p-6 transition-all duration-300 hover:scale-105 hover:shadow-2xl border border-white/10 hover:border-primary/50">
+      <div class="flex flex-col items-center text-center">
+      <div class="w-16 h-16 bg-purple-500/20 rounded-xl flex items-center justify-center mb-4 group-hover:bg-purple-500/30 transition-colors">
+      <svg class="w-8 h-8 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 4V2a1 1 0 011-1h8a1 1 0 011 1v2m-9 3v12a2 2 0 002 2h6a2 2 0 002-2V7m3 0H6m9 4H9m6 0H9m6 4H9"></path>
+      </svg>
+      </div>
+      <h3 class="text-xl font-semibold mb-2 group-hover:text-primary transition-colors">📹 Video Library </h3>
+      <p class="text-gray-400 text-sm group-hover:text-gray-300 transition-colors">Check Available Videos</p>
+      </div>
+      </a>
+
+      <!-- Health Check -->
+      <a href="/health" class="group bg-bg-card hover:bg-bg-card-hover backdrop-blur-sm rounded-2xl p-6 transition-all duration-300 hover:scale-105 hover:shadow-2xl border border-white/10 hover:border-primary/50">
+      <div class="flex flex-col items-center text-center">
+      <div class="w-16 h-16 bg-green-500/20 rounded-xl flex items-center justify-center mb-4 group-hover:bg-green-500/30 transition-colors">
+      <svg class="w-8 h-8 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"></path>
+      </svg>
+      </div>
+      <h3 class="text-xl font-semibold mb-2 group-hover:text-primary transition-colors">❤️ Health Check</h3>
+      <p class="text-gray-400 text-sm group-hover:text-gray-300 transition-colors">Check System Status</p>
+      </div>
+      </a>
+      </div>
+
+
+      <script>
+
+
+      // Try to get pod info from environment if available
+      fetch('/api/pod-info')
+      .then(response => response.json())
+      .then(data => {
+      if (data.region) {
+      document.getElementById('region').textContent = data.region;
+      }
+      })
+      .catch(() => {
+      // Fallback - try to detect region from hostname
+      const hostname = window.location.hostname;
+      if (hostname.includes('europe')) {
+      document.getElementById('region').textContent = 'Europe West';
+      } else if (hostname.includes('asia')) {
+      document.getElementById('region').textContent = 'Asia Southeast';
+      } else if (hostname.includes('us')) {
+      document.getElementById('region').textContent = 'US South';
+      }
+      });
+
+      // Add smooth scrolling for any anchor links
+      document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+      anchor.addEventListener('click', function (e) {
+      e.preventDefault();
+      document.querySelector(this.getAttribute('href')).scrollIntoView({
+    behavior: 'smooth'
+    });
+    });
+    });
+
+      // Add keyboard navigation
+      document.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter' && e.target.tagName === 'A') {
+      e.target.click();
+    }
+    });
+      </script>
+      </body>
+      </html>
+  playlist-viewer.html: |
+    <!DOCTYPE html>
+    <html lang="en" class="dark">
+    <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Playlist Viewer - CDN</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+    tailwind.config = {
+    darkMode: 'class',
+    theme: {
+      extend: {
+        colors: {
+          primary: '#4a9eff',
+          'primary-dark': '#3580cc',
+          'bg-dark': '#0a1e3d',
+          'bg-card': 'rgba(255,255,255,0.1)',
+          'bg-card-hover': 'rgba(255,255,255,0.2)',
+        },
+        animation: {
+          'fade-in': 'fadeIn 0.5s ease-in-out',
+          'slide-up': 'slideUp 0.3s ease-out',
+        },
+        keyframes: {
+          fadeIn: {
+            '0%': { opacity: '0' },
+            '100%': { opacity: '1' },
+          },
+          slideUp: {
+            '0%': { transform: 'translateY(20px)', opacity: '0' },
+            '100%': { transform: 'translateY(0)', opacity: '1' },
+          }
+        }
+      }
+    }
+    }
+      </script>
+      <link rel="stylesheet" href="/styles.css">
+      </head>
+      <body class="bg-bg-dark text-white min-h-screen font-sans">
+      <!-- Back Link -->
+      <a href="/" class="fixed top-6 left-6 text-primary hover:text-primary-dark transition-colors duration-200 flex items-center gap-2 z-10">
+      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
+      </svg>
+      Back to Home
+      </a>
+
+      <!-- Main Container -->
+      <div class="container mx-auto px-4 py-8 max-w-7xl">
+      <!-- Header -->
+      <div class="text-center mb-8 animate-fade-in">
+      <h1 class="text-4xl md:text-5xl font-bold mb-4 bg-gradient-to-r from-primary to-purple-400 bg-clip-text text-transparent">
+      📺 Playlist Viewer
+      </h1>
+      <p class="text-gray-300 text-lg">View and analyze M3U8 playlist content</p>
+      </div>
+
+      <!-- URL Input Section -->
+      <div class="bg-bg-card backdrop-blur-sm rounded-2xl p-6 md:p-8 shadow-2xl mb-8 animate-slide-up">
+      <div class="flex flex-col md:flex-row gap-4">
+      <div class="flex-1">
+      <label for="playlist-url" class="block text-sm font-medium text-gray-300 mb-2">M3U8 Playlist URL</label>
+      <input
+      type="url"
+      id="playlist-url"
+      placeholder="https://example.com/stream/playlist.m3u8 ou /hls/stream1/playlist.m3u8"
+      class="w-full px-4 py-3 bg-gray-800/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+      >
+      </div>
+      <div class="flex gap-2">
+      <button
+      onclick="loadPlaylist()"
+      class="bg-primary hover:bg-primary-dark text-white px-6 py-3 rounded-lg transition-all duration-200 hover:scale-105 flex items-center gap-2 shadow-lg whitespace-nowrap"
+      >
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
+      </svg>
+      Load
+      </button>
+      <button
+      onclick="clearPlaylist()"
+      class="bg-gray-600 hover:bg-gray-700 text-white px-4 py-3 rounded-lg transition-all duration-200 hover:scale-105"
+      >
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+      </svg>
+      </button>
+      </div>
+      </div>
+      </div>
+
+      <!-- Quick Links for Local Streams -->
+      <div id="quick-links" class="bg-bg-card backdrop-blur-sm rounded-2xl p-6 shadow-2xl mb-8 hidden">
+      <h3 class="text-xl font-semibold mb-4">🚀 Local Streams</h3>
+      <div id="local-streams" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3"></div>
+      </div>
+
+      <!-- Loading State -->
+      <div id="loading" class="hidden text-center py-8">
+      <div class="inline-flex items-center gap-3 text-primary">
+      <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+      <span class="text-lg">Loading playlist...</span>
+      </div>
+      </div>
+
+      <!-- Error State -->
+      <div id="error" class="hidden bg-red-400/10 border border-red-400/20 rounded-lg p-6 text-center text-red-400 mb-8">
+      <svg class="w-12 h-12 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+      </svg>
+      <h3 class="text-lg font-semibold mb-2">Error loading playlist</h3>
+      <p id="error-message">Check the URL and try again</p>
+      </div>
+
+      <!-- Playlist Content -->
+      <div id="playlist-content" class="hidden">
+      <!-- Playlist Info -->
+      <div class="bg-bg-card backdrop-blur-sm rounded-2xl p-6 shadow-2xl mb-8">
+      <h3 class="text-2xl font-semibold mb-4">📋 Playlist Information</h3>
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
+      <div class="bg-gray-800/50 rounded-lg p-3">
+      <span class="text-gray-400">Version:</span><br>
+      <span id="playlist-version" class="font-mono">-</span>
+      </div>
+      <div class="bg-gray-800/50 rounded-lg p-3">
+      <span class="text-gray-400">Segment Duration:</span><br>
+      <span id="target-duration" class="font-mono">-</span>
+      </div>
+      <div class="bg-gray-800/50 rounded-lg p-3">
+      <span class="text-gray-400">Initial Sequence:</span><br>
+      <span id="media-sequence" class="font-mono">-</span>
+      </div>
+      <div class="bg-gray-800/50 rounded-lg p-3">
+      <span class="text-gray-400">Total Segments:</span><br>
+      <span id="total-segments" class="font-mono">-</span>
+      </div>
+      </div>
+      </div>
+
+      <!-- Segments List -->
+      <div class="bg-bg-card backdrop-blur-sm rounded-2xl p-6 shadow-2xl">
+      <div class="flex justify-between items-center mb-6">
+      <h3 class="text-2xl font-semibold">🎬 Segments</h3>
+      <div class="flex gap-2">
+      <button onclick="downloadPlaylist()" class="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg transition-all duration-200 hover:scale-105 flex items-center gap-2 text-sm">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+      </svg>
+      Download M3U8
+      </button>
+      <button onclick="copyToClipboard()" class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg transition-all duration-200 hover:scale-105 flex items-center gap-2 text-sm">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
+      </svg>
+      Copy URL
+      </button>
+      </div>
+      </div>
+
+      <div id="segments-list" class="space-y-2 max-h-96 overflow-y-auto"></div>
+      </div>
+      </div>
+
+      <!-- Raw Content Viewer -->
+      <div id="raw-content" class="hidden bg-bg-card backdrop-blur-sm rounded-2xl p-6 shadow-2xl mt-8">
+      <h3 class="text-xl font-semibold mb-4">📄 Raw Playlist Content</h3>
+      <pre id="raw-text" class="bg-gray-900 text-green-400 p-4 rounded-lg text-sm overflow-x-auto font-mono whitespace-pre-wrap"></pre>
+      </div>
+      </div>
+
+      <script>
+      let currentPlaylistUrl = '';
+      let playlistContent = '';
+
+      async function loadPlaylist() {
+      const inputUrl = document.getElementById('playlist-url').value.trim();
+      if (!inputUrl) {
+      showError('Please enter a valid URL');
+      return;
+    }
+
+      // Convert relative URLs to absolute URLs
+      let url;
+      if (inputUrl.startsWith('http://') || inputUrl.startsWith('https://')) {
+      // Already absolute URL
+      url = inputUrl;
+    } else if (inputUrl.startsWith('/')) {
+      // Relative URL - prepend current origin
+      url = window.location.origin + inputUrl;
+    } else {
+      // Assume it's a relative path, prepend current base
+      url = new URL(inputUrl, window.location.href).href;
+    }
+
+      currentPlaylistUrl = url;
+      showLoading();
+      hideError();
+      hideContent();
+
+      try {
+      const response = await fetch(url);
+      if (!response.ok) {
+    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+
+      const content = await response.text();
+      playlistContent = content;
+      parsePlaylist(content);
+      showContent();
+    } catch (error) {
+    showError(`Error loading playlist: ${error.message}`);
+    } finally {
+      hideLoading();
+    }
+    }
+
+      function parsePlaylist(content) {
+      const lines = content.split('\n').map(line => line.trim()).filter(line => line);
+
+      // Parse playlist info
+      let version = '-', targetDuration = '-', mediaSequence = '-';
+      const segments = [];
+
+      for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+
+      if (line.startsWith('#EXT-X-VERSION:')) {
+      version = line.split(':')[1];
+    } else if (line.startsWith('#EXT-X-TARGETDURATION:')) {
+      targetDuration = line.split(':')[1] + 's';
+    } else if (line.startsWith('#EXT-X-MEDIA-SEQUENCE:')) {
+      mediaSequence = line.split(':')[1];
+    } else if (line.startsWith('#EXTINF:')) {
+      const duration = line.split(':')[1].split(',')[0];
+      const nextLine = lines[i + 1];
+      if (nextLine && !nextLine.startsWith('#')) {
+      segments.push({
+    duration: parseFloat(duration),
+    url: nextLine,
+    index: segments.length
+    });
+      i++; // Skip next line as it's the URL
+    }
+    }
+    }
+
+      // Update UI
+      document.getElementById('playlist-version').textContent = version;
+      document.getElementById('target-duration').textContent = targetDuration;
+      document.getElementById('media-sequence').textContent = mediaSequence;
+      document.getElementById('total-segments').textContent = segments.length;
+
+      // Show segments
+      displaySegments(segments);
+
+      // Show raw content
+      document.getElementById('raw-text').textContent = content;
+      document.getElementById('raw-content').style.display = 'block';
+    }
+
+      function displaySegments(segments) {
+      const container = document.getElementById('segments-list');
+      container.innerHTML = '';
+
+      segments.forEach((segment, index) => {
+      const segmentDiv = document.createElement('div');
+      segmentDiv.className = 'bg-gray-800/50 rounded-lg p-3 flex items-center justify-between hover:bg-gray-700/50 transition-colors';
+
+      const isAbsolute = segment.url.startsWith('http');
+    const segmentUrl = isAbsolute ? segment.url : new URL(segment.url, currentPlaylistUrl).href;
+
+      segmentDiv.innerHTML = `
+      <div class="flex-1">
+      <div class="flex items-center gap-3">
+      <span class="bg-primary/20 text-primary px-2 py-1 rounded text-xs font-mono">#${segment.index + 1}</span>
+      <span class="text-gray-400 text-sm">${segment.duration}s</span>
+      <span class="text-white font-mono text-sm truncate">${segment.url}</span>
+      </div>
+      </div>
+      <div class="flex gap-2">
+      <button onclick="downloadSegment('${segmentUrl}', '${segment.url}')"
+      class="bg-green-500/20 hover:bg-green-500/30 text-green-400 px-3 py-1 rounded text-xs transition-colors">
+      Download
+      </button>
+      <button onclick="copySegmentUrl('${segmentUrl}')"
+      class="bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 px-3 py-1 rounded text-xs transition-colors">
+      Copiar
+      </button>
+      </div>
+      `;
+
+      container.appendChild(segmentDiv);
+    });
+    }
+
+      function downloadSegment(url, filename) {
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+    }
+
+      function copySegmentUrl(url) {
+      navigator.clipboard.writeText(url).then(() => {
+      showToast('URL copied to clipboard');
+    });
+    }
+
+      function downloadPlaylist() {
+    const blob = new Blob([playlistContent], { type: 'application/vnd.apple.mpegurl' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'playlist.m3u8';
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+      function copyToClipboard() {
+      navigator.clipboard.writeText(currentPlaylistUrl).then(() => {
+      showToast('URL copied to clipboard');
+    });
+    }
+
+      function clearPlaylist() {
+      document.getElementById('playlist-url').value = '';
+      hideContent();
+      hideError();
+      document.getElementById('raw-content').style.display = 'none';
+    }
+
+      function showLoading() {
+      document.getElementById('loading').style.display = 'block';
+    }
+
+      function hideLoading() {
+      document.getElementById('loading').style.display = 'none';
+    }
+
+      function showError(message) {
+      document.getElementById('error-message').textContent = message;
+      document.getElementById('error').style.display = 'block';
+    }
+
+      function hideError() {
+      document.getElementById('error').style.display = 'none';
+    }
+
+      function showContent() {
+      document.getElementById('playlist-content').style.display = 'block';
+    }
+
+      function hideContent() {
+      document.getElementById('playlist-content').style.display = 'none';
+    }
+
+      function showToast(message) {
+      // Create toast notification
+      const toast = document.createElement('div');
+      toast.className = 'fixed bottom-4 right-4 bg-green-500 text-white px-4 py-2 rounded-lg shadow-lg z-50 animate-slide-up';
+      toast.textContent = message;
+      document.body.appendChild(toast);
+
+      setTimeout(() => {
+      toast.remove();
+    }, 3000);
+    }
+
+      // Load local streams on page load
+      async function loadLocalStreams() {
+      try {
+      const response = await fetch('/hls/');
+      const html = await response.text();
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(html, 'text/html');
+      const links = doc.querySelectorAll('a[href]');
+
+      const streams = [];
+      links.forEach(link => {
+      const href = link.getAttribute('href');
+      if (href && href !== '../' && href.endsWith('/')) {
+      const streamName = href.replace('/', '');
+      if (streamName) {
+      streams.push(streamName);
+      }
+      }
+      });
+
+      if (streams.length > 0) {
+      const container = document.getElementById('local-streams');
+      container.innerHTML = '';
+
+      streams.forEach(stream => {
+      const button = document.createElement('button');
+      button.className = 'bg-primary/20 hover:bg-primary/30 text-primary px-3 py-2 rounded-lg text-sm transition-colors';
+      button.textContent = stream;
+      button.onclick = () => {
+      const fullUrl = `${window.location.origin}/hls/${stream}/playlist.m3u8`;
+      document.getElementById('playlist-url').value = fullUrl;
+      };
+      container.appendChild(button);
+      });
+
+      document.getElementById('quick-links').style.display = 'block';
+      }
+    } catch (error) {
+      console.log('Could not load local streams:', error);
+    }
+    }
+
+      // Initialize
+      loadLocalStreams();
+
+      // Enter key support
+      document.getElementById('playlist-url').addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+      loadPlaylist();
+    }
+    });
+      </script>
+      </body>
+      </html>
   live-index.html: |
     <!DOCTYPE html>
     <html lang="pt-BR">
     <head>
-        <meta charset="UTF-8" />
-        <title>Live Streaming - CDN</title>
-        <style>
-            body {
-                font-family: Arial, sans-serif;
-                text-align: center;
-                background: #0a1e3d;
-                color: white;
-                margin: 2rem;
-            }
-            h1 {
-                font-size: 2.5rem;
-                margin-bottom: 1rem;
-            }
-            .video-container {
-                max-width: 800px;
-                margin: 2rem auto;
-                background: rgba(255,255,255,0.1);
-                padding: 2rem;
-                border-radius: 10px;
-            }
-            video {
-                width: 100%;
-                max-width: 720px;
-                height: auto;
-                background: #000;
-                border-radius: 5px;
-            }
-            .controls {
-                margin-top: 1rem;
-            }
-            .controls button {
-                background: #4a9eff;
-                color: white;
-                border: none;
-                padding: 0.5rem 1rem;
-                margin: 0.5rem;
-                border-radius: 5px;
-                cursor: pointer;
-            }
-            .controls button:hover {
-                background: #3580cc;
-            }
-            .info {
-                margin-top: 1rem;
-                font-size: 0.9rem;
-                opacity: 0.8;
-            }
-            .back-link {
-                position: absolute;
-                top: 2rem;
-                left: 2rem;
-                color: #4a9eff;
-                text-decoration: none;
-            }
-        </style>
-    </head>
-    <body>
-    <a href="/" class="back-link">← Voltar ao início</a>
+    <meta charset="UTF-8" />
+    <title>Live Streaming - CDN</title>
+    <style>
+    body {
+    font-family: Arial, sans-serif;
+    text-align: center;
+    background: #0a1e3d;
+    color: white;
+    margin: 2rem;
+    }
+      h1 {
+    font-size: 2.5rem;
+    margin-bottom: 1rem;
+    }
+      .streams-container {
+    max-width: 1000px;
+    margin: 2rem auto;
+    background: rgba(255,255,255,0.1);
+    padding: 2rem;
+    border-radius: 10px;
+    }
+      .stream-list {
+    margin-bottom: 2rem;
+    }
+      .stream-item {
+    background: rgba(255,255,255,0.1);
+    margin: 1rem 0;
+    padding: 1rem;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.3s;
+    }
+      .stream-item:hover {
+    background: rgba(255,255,255,0.2);
+    }
+      .stream-item.selected {
+    background: rgba(74, 158, 255, 0.3);
+    border: 2px solid #4a9eff;
+    }
+      .video-container {
+    display: none;
+    max-width: 800px;
+    margin: 2rem auto;
+    background: rgba(255,255,255,0.1);
+    padding: 2rem;
+    border-radius: 10px;
+    }
+      video {
+    width: 100%;
+    max-width: 720px;
+    height: auto;
+    background: #000;
+    border-radius: 5px;
+    }
+      .controls {
+    margin-top: 1rem;
+    }
+      .controls button {
+    background: #4a9eff;
+    color: white;
+    border: none;
+    padding: 0.5rem 1rem;
+    margin: 0.5rem;
+    border-radius: 5px;
+    cursor: pointer;
+    }
+      .controls button:hover {
+    background: #3580cc;
+    }
+      .info {
+    margin-top: 1rem;
+    font-size: 0.9rem;
+    opacity: 0.8;
+    }
+      .back-link {
+    position: absolute;
+    top: 2rem;
+    left: 2rem;
+    color: #4a9eff;
+    text-decoration: none;
+    }
+      .loading {
+    color: #4a9eff;
+    margin: 2rem 0;
+    }
+      .error {
+    color: #ef4444;
+    margin: 2rem 0;
+    }
+      .refresh-btn {
+    background: #4a9eff;
+    color: white;
+    border: none;
+    padding: 0.5rem 1rem;
+    border-radius: 5px;
+    cursor: pointer;
+    margin: 1rem;
+    }
+      </style>
+      </head>
+      <body>
+      <a href="/" class="back-link">←         Back to Home</a>
 
-    <h1>🎬 Live Streaming</h1>
+      <h1>🎬 Live Streaming</h1>
 
-    <div class="video-container">
-        <video id="video" controls autoplay muted>
-            <source src="/hls/stream.m3u8" type="application/vnd.apple.mpegurl">
-            Your browser does not support HLS streaming.
-        </video>
+      <div class="streams-container">
+      <h2>Available Streams</h2>
+      <button class="refresh-btn" onclick="loadStreams()">🔄 Refresh Streams</button>
 
-        <div class="controls">
-            <button onclick="playStream()">▶️ Play</button>
-            <button onclick="pauseStream()">⏸️ Pause</button>
-            <button onclick="reloadStream()">🔄 Reload</button>
-        </div>
+      <div id="loading" class="loading">Loading streams...</div>
+    <div id="error" class="error" style="display: none;">No streams found</div>
+      <div id="stream-list" class="stream-list"></div>
+      </div>
 
-        <div class="info">
-            <p>Stream URL: /hls/stream.m3u8</p>
-            <p>Format: HLS (HTTP Live Streaming)</p>
-            <p>Status: <span id="stream-status">Checking...</span></p>
-        </div>
-    </div>
+      <div id="video-container" class="video-container">
+      <h3 id="current-stream">Stream Player</h3>
+      <video id="video" controls muted>
+      Your browser does not support HLS streaming.
+      </video>
 
-    <script>
-        const video = document.getElementById('video');
-        const statusElement = document.getElementById('stream-status');
+      <div class="controls">
+      <button onclick="playStream()">▶️ Play</button>
+      <button onclick="pauseStream()">⏸️ Pause</button>
+      <button onclick="reloadStream()">🔄 Reload</button>
+      <button onclick="closeStream()">❌ Close</button>
+      </div>
 
-        function playStream() {
-            video.play();
-        }
+      <div class="info">
+    <p>Stream URL: <span id="stream-url">-</span></p>
+    <p>Format: HLS (HTTP Live Streaming)</p>
+    <p>Status: <span id="stream-status">Ready</span></p>
+      </div>
+      </div>
 
-        function pauseStream() {
-            video.pause();
-        }
+      <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+      <script>
+      let streams = [];
+      let currentHls = null;
+      const video = document.getElementById('video');
+      const statusElement = document.getElementById('stream-status');
 
-        function reloadStream() {
-            video.load();
-        }
+      function loadStreams() {
+      document.getElementById('loading').style.display = 'block';
+      document.getElementById('error').style.display = 'none';
+      document.getElementById('stream-list').innerHTML = '';
 
-        // Check stream availability
-        fetch('/hls/stream.m3u8')
-            .then(response => {
-                if (response.ok) {
-                    statusElement.textContent = '✅ Stream Available';
-                    statusElement.style.color = '#4ade80';
-                } else {
-                    statusElement.textContent = '❌ Stream Not Available';
-                    statusElement.style.color = '#ef4444';
-                }
-            })
-            .catch(() => {
-                statusElement.textContent = '❌ Stream Not Available';
-                statusElement.style.color = '#ef4444';
-            });
+      fetch('/hls/')
+      .then(response => response.text())
+      .then(html => {
+      // Parse directory listing to extract stream names
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(html, 'text/html');
+      const links = doc.querySelectorAll('a[href]');
 
-        // Basic HLS support for Safari
-        if (video.canPlayType('application/vnd.apple.mpegurl')) {
-            video.src = '/hls/stream.m3u8';
-        }
-    </script>
-    </body>
-    </html>
+      streams = [];
+      links.forEach(link => {
+      const href = link.getAttribute('href');
+      // Skip parent directory and non-directory links
+      if (href && href !== '../' && href.endsWith('/')) {
+      const streamName = href.replace('/', '');
+      if (streamName) {
+      streams.push(streamName);
+      }
+      }
+      });
+
+      displayStreams();
+      })
+      .catch(error => {
+      console.error('Error loading streams:', error);
+      document.getElementById('loading').style.display = 'none';
+      document.getElementById('error').style.display = 'block';
+      });
+    }
+
+      function displayStreams() {
+      document.getElementById('loading').style.display = 'none';
+      const streamList = document.getElementById('stream-list');
+
+      if (streams.length === 0) {
+      document.getElementById('error').style.display = 'block';
+      return;
+    }
+
+      streamList.innerHTML = '';
+      streams.forEach(streamName => {
+      const streamItem = document.createElement('div');
+      streamItem.className = 'stream-item';
+      streamItem.innerHTML = `
+      <h3>📺 ${streamName}</h3>
+      <p>Click to play this stream</p>
+      `;
+      streamItem.onclick = () => selectStream(streamName);
+      streamList.appendChild(streamItem);
+    });
+    }
+
+      function selectStream(streamName) {
+      // Clear previous selection
+      document.querySelectorAll('.stream-item').forEach(item => {
+      item.classList.remove('selected');
+    });
+
+      // Mark as selected
+      event.target.classList.add('selected');
+
+      // Check for playlist file
+      const playlistUrl = `/hls/${streamName}/playlist.m3u8`;
+
+    document.getElementById('current-stream').textContent = `Stream: ${streamName}`;
+      document.getElementById('stream-url').textContent = playlistUrl;
+      document.getElementById('video-container').style.display = 'block';
+
+      // Check if playlist exists
+      fetch(playlistUrl)
+      .then(response => {
+      if (response.ok) {
+      loadVideoStream(playlistUrl);
+      } else {
+      // Try index.m3u8 as fallback
+      const fallbackUrl = `/hls/${streamName}/index.m3u8`;
+      return fetch(fallbackUrl).then(fallbackResponse => {
+      if (fallbackResponse.ok) {
+      loadVideoStream(fallbackUrl);
+      } else {
+      throw new Error('No valid playlist found');
+      }
+      });
+      }
+      })
+      .catch(error => {
+      statusElement.textContent = '❌ Stream Not Available';
+      statusElement.style.color = '#ef4444';
+      console.error('Stream error:', error);
+      });
+    }
+
+      function loadVideoStream(streamUrl) {
+      // Clean up previous HLS instance
+      if (currentHls) {
+      currentHls.destroy();
+    }
+
+      if (Hls.isSupported()) {
+      currentHls = new Hls();
+      currentHls.loadSource(streamUrl);
+      currentHls.attachMedia(video);
+
+      currentHls.on(Hls.Events.MANIFEST_PARSED, function() {
+      statusElement.textContent = '✅ Stream Ready';
+      statusElement.style.color = '#4ade80';
+      });
+
+      currentHls.on(Hls.Events.ERROR, function(event, data) {
+      statusElement.textContent = '❌ Stream Error';
+      statusElement.style.color = '#ef4444';
+      console.error('HLS Error:', data);
+      });
+    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+      // Safari native HLS support
+      video.src = streamUrl;
+      statusElement.textContent = '✅ Stream Ready (Native)';
+      statusElement.style.color = '#4ade80';
+    } else {
+      statusElement.textContent = '❌ HLS Not Supported';
+      statusElement.style.color = '#ef4444';
+    }
+    }
+
+      function playStream() {
+      video.play();
+    }
+
+      function pauseStream() {
+      video.pause();
+    }
+
+      function reloadStream() {
+      video.load();
+    }
+
+      function closeStream() {
+      if (currentHls) {
+      currentHls.destroy();
+      currentHls = null;
+    }
+      video.src = '';
+      document.getElementById('video-container').style.display = 'none';
+      document.querySelectorAll('.stream-item').forEach(item => {
+      item.classList.remove('selected');
+    });
+    }
+
+      // Load streams on page load
+      loadStreams();
+      </script>
+      </body>
+      </html>
