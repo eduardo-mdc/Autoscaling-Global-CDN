@@ -96,15 +96,8 @@ output "domain_configuration" {
   }
 }
 
-output "nameserver_instructions" {
-  description = "Instructions for configuring nameservers"
-  value       = module.loadbalancer.nameserver_configuration
-}
 
-output "deployment_urls" {
-  description = "URLs to access your deployment"
-  value       = module.loadbalancer.deployment_urls
-}
+
 
 output "kubectl_access_via_bastions" {
   description = "Instructions for accessing GKE clusters via bastion hosts"
@@ -189,3 +182,39 @@ output "workload_identity_pool" {
   value       = "${var.project_id}.svc.id.goog"
 }
 
+
+# Replace load_balancer_ip with MCI IP
+output "mci_global_ip" {
+  description = "Global IP for Multi-Cluster Ingress"
+  value       = module.fleet.mci_global_ip
+}
+
+# Replace deployment_urls
+output "deployment_urls" {
+  description = "URLs to access your deployment via MCI"
+  value       = module.fleet.deployment_urls
+}
+
+# Replace nameserver_instructions
+output "nameserver_instructions" {
+  description = "Instructions for configuring nameservers"
+  value = var.domain_name != "" ? {
+    message = "Configure these nameservers at your domain registrar:"
+    nameservers = module.fleet.dns_zone_nameservers
+    domain = var.domain_name
+  } : null
+}
+
+output "fleet_summary" {
+  description = "GKE Fleet configuration summary"
+  value = {
+    config_cluster       = var.hot_regions[0]
+    member_clusters      = slice(var.hot_regions, 1, length(var.hot_regions))
+    mci_global_ip        = module.fleet.mci_global_ip
+    mci_global_ip_name   = module.fleet.mci_global_ip_name
+  }
+}
+
+# Remove or comment out old loadbalancer outputs:
+# output "load_balancer_ip" { ... }
+# output "domain_configuration" { ... }

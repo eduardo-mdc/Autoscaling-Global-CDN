@@ -1,6 +1,6 @@
 ---
-# Simple working solution: Regional Ingresses with shared static IP
-# File: playbooks/roles/streaming-server/tasks/deploy-simple-shared-ingress.yml
+# File: playbooks/roles/streaming-server/tasks/deploy-mci.yml
+# Multi-Cluster Ingress setup for global load balancing
 
 - name: Get current region from bastion hostname
   shell: "hostname | grep -o 'bastion-[^-]*' | cut -d'-' -f2 || echo 'unknown'"
@@ -10,24 +10,37 @@
   set_fact:
     bastion_region: "{{ current_region.stdout }}"
 
-- name: Create OAuth2 Service
+- name: Check if this is the config cluster (first region)
+  set_fact:
+    is_config_cluster: "{{ bastion_region == regions[0] }}"
+
+- name: Debug MCI setup
+  debug:
+    msg: |
+      Region: {{ bastion_region }}
+      Is config cluster: {{ is_config_cluster }}
+      Config cluster: {{ regions[0] }}
+
+# Deploy service in all clusters
+- name: Create OAuth2 Service for MCI
   k8s:
     state: present
     definition:
       apiVersion: v1
       kind: Service
       metadata:
-        name: oauth2-proxy
+        name: oauth2-proxy-mci
         namespace: "{{ app_namespace }}"
         labels:
           app: oauth2-proxy
           region: "{{ bastion_region }}"
+        annotations:
+          cloud.google.com/neg: '{"ingress": true}'
+          cloud.google.com/backend-config: '{"default": "{{ project_name }}-backend-config"}'
       spec:
-        type: LoadBalancer
+        type: ClusterIP
         selector:
           app: oauth2-proxy
-        annotations:
-         #cloud.google.com/load-balancer-type: "Internal"
         ports:
           - name: http
             port: 4180
@@ -36,68 +49,100 @@
     wait: true
     wait_timeout: 60
 
-- name: Create regional Ingress with shared IP
-  k8s:
-    state: present
-    definition:
-      apiVersion: networking.k8s.io/v1
-      kind: Ingress
-      metadata:
-        name: "oauth2-{{ bastion_region }}"
-        namespace: "{{ app_namespace }}"
-        labels:
-          app: oauth2-proxy
-          region: "{{ bastion_region }}"
-        annotations:
-          kubernetes.io/ingress.class: "gce"
-          kubernetes.io/ingress.allow-http: "true"
-      spec:
-        defaultBackend:
-          service:
-            name: oauth2-proxy
-            port:
-              number: 4180
-        rules:
-          - http:
-              paths:
-                - path: /
-                  pathType: Prefix
-                  backend:
-                    service:
-                      name: oauth2-proxy
-                      port:
-                        number: 4180
-    wait: false
+# Only deploy MCI resources in the config cluster
+- name: Setup Multi-Cluster Ingress (Config Cluster Only)
+  when: is_config_cluster
+  block:
+    - name: Create MultiClusterService
+      k8s:
+        state: present
+        definition:
+          apiVersion: networking.gke.io/v1
+          kind: MultiClusterService
+          metadata:
+            name: oauth2-proxy-mcs
+            namespace: "{{ app_namespace }}"
+            labels:
+              app: oauth2-proxy
+          spec:
+            template:
+              spec:
+                selector:
+                  app: oauth2-proxy
+                ports:
+                  - name: http
+                    protocol: TCP
+                    port: 4180
+                    targetPort: 4180
+        wait: true
+        wait_timeout: 120
 
-- name: Display deployment status
+    - name: Create MultiClusterIngress
+      k8s:
+        state: present
+        definition:
+          apiVersion: networking.gke.io/v1
+          kind: MultiClusterIngress
+          metadata:
+            name: oauth2-proxy-mci
+            namespace: "{{ app_namespace }}"
+            labels:
+              app: oauth2-proxy
+            annotations:
+              networking.gke.io/static-ip: "{{ project_name }}-global-ip"
+              networking.gke.io/managed-certificates: "{{ project_name }}-ssl-cert"
+          spec:
+            template:
+              spec:
+                backend:
+                  serviceName: oauth2-proxy-mcs
+                  servicePort: 4180
+                rules:
+                  - host: "{{ domain_name }}"
+                    http:
+                      paths:
+                        - path: /*
+                          backend:
+                            serviceName: oauth2-proxy-mcs
+                            servicePort: 4180
+        wait: false
+
+    - name: Create ManagedCertificate for MCI
+      k8s:
+        state: present
+        definition:
+          apiVersion: networking.gke.io/v1
+          kind: ManagedCertificate
+          metadata:
+            name: "{{ project_name }}-ssl-cert"
+            namespace: "{{ app_namespace }}"
+            labels:
+              app: oauth2-proxy
+          spec:
+            domains:
+              - "{{ domain_name }}"
+              - "www.{{ domain_name }}"
+        wait: false
+
+- name: Display MCI status
   debug:
     msg: |
-      ✅ Deployed OAuth2 Ingress in region: {{ bastion_region }}
+      ✅ Multi-Cluster Ingress setup completed for region: {{ bastion_region }}
       
-      🌐 Configuration:
-      - Ingress name: oauth2-{{ bastion_region }}
+      {% if is_config_cluster %}
+      🎯 Config Cluster - MCI resources deployed:
+      - MultiClusterService: oauth2-proxy-mcs
+      - MultiClusterIngress: oauth2-proxy-mci
+      - ManagedCertificate: {{ project_name }}-ssl-cert
       - Static IP: {{ project_name }}-global-ip
-      - Service: oauth2-proxy:4180
+      {% else %}
+      📡 Member Cluster - Service registered for MCI
+      {% endif %}
       
-      🔄 Google automatically merges all regional Ingresses using the same static IP
+      🌐 Global URL: https://{{ domain_name }}
       
-      ⏱️  Wait 3-5 minutes for load balancer to be ready, then test:
-      curl http://{{ load_balancer_ip | default('PENDING') }}/ 
-
-- name: Get Ingress status
-  k8s_info:
-    api_version: networking.k8s.io/v1
-    kind: Ingress
-    name: "oauth2-{{ bastion_region }}"
-    namespace: "{{ app_namespace }}"
-  register: ingress_status
-
-- name: Show Ingress details
-  debug:
-    msg: |
-      📊 Ingress Status for {{ bastion_region }}:
-      - Name: {{ ingress_status.resources[0].metadata.name }}
-      - IP: {{ ingress_status.resources[0].status.loadBalancer.ingress[0].ip | default('Pending') }}
-      - Backend: {{ ingress_status.resources[0].spec.defaultBackend.service.name }}
+      ⏱️  Wait 5-10 minutes for MCI provisioning
       
-      🔍 Check status: kubectl get ingress oauth2-{{ bastion_region }} -n {{ app_namespace }}
+      🔍 Check status:
+      kubectl get mci oauth2-proxy-mci -n {{ app_namespace }}
+      kubectl describe mci oauth2-proxy-mci -n {{ app_namespace }}

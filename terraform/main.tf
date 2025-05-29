@@ -232,3 +232,21 @@ module "admin_webapp" {
   container_image   = "gcr.io/${var.project_id}/admin-webapp:latest"
   regions           = var.regions
 }
+
+
+
+module "fleet" {
+  source = "./modules/fleet"
+
+  project_id               = var.project_id
+  project_name             = var.project_name
+  config_cluster_region    = var.hot_regions[0]  # First hot region is config cluster
+  member_cluster_regions   = concat(
+    slice(var.hot_regions, 1, length(var.hot_regions)),  # Other hot regions
+    var.cold_regions  # All cold regions
+  )
+  domain_name              = var.domain_name
+
+  # Ensure all clusters are created first
+  depends_on = [module.gke_hot, module.gke_cold]
+}
