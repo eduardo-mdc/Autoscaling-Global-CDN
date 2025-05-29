@@ -220,3 +220,15 @@ module "loadbalancer" {
   enable_caa_records        = var.enable_caa_records
   additional_domains        = var.additional_domains
 }
+
+
+module "admin_webapp" {
+  source = "./modules/admin-webapp"
+
+  project_id         = var.project_id
+  project_name       = var.project_name
+  region            = var.regions[0]
+  master_bucket_name = module.storage.master_bucket_name
+  container_image   = "gcr.io/${var.project_id}/admin-webapp:latest"
+  regions           = var.regions
+}

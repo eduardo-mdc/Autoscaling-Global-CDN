@@ -1,0 +1,64 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: oauth2-proxy
+  namespace: {{ app_namespace }}
+  labels:
+    app: oauth2-proxy
+    created-by: ansible
+spec:
+  replicas: {{ oauth_proxy_replicas | default('2') }}
+  selector:
+    matchLabels:
+      app: oauth2-proxy
+  template:
+    metadata:
+      labels:
+        app: oauth2-proxy
+    spec:
+      containers:
+        - name: oauth2-proxy
+          image: "quay.io/oauth2-proxy/oauth2-proxy:{{ oauth_proxy_version | default('v7.4.0') }}"
+          args:
+            - --config=/etc/oauth2_proxy/oauth2_proxy.cfg
+          ports:
+            - containerPort: 4180
+              name: http
+          env:
+            - name: OAUTH2_PROXY_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: oauth2-proxy-secret
+                  key: client-secret
+            - name: OAUTH2_PROXY_COOKIE_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: oauth2-proxy-secret
+                  key: cookie-secret
+          volumeMounts:
+            - name: config
+              mountPath: /etc/oauth2_proxy
+          resources:
+            requests:
+              memory: "{{ oauth_proxy_memory_request | default('64Mi') }}"
+              cpu: "{{ oauth_proxy_cpu_request | default('50m') }}"
+            limits:
+              memory: "{{ oauth_proxy_memory_limit | default('128Mi') }}"
+              cpu: "{{ oauth_proxy_cpu_limit | default('100m') }}"
+          livenessProbe:
+            httpGet:
+              path: /ping
+              port: 4180
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /ping
+              port: 4180
+            initialDelaySeconds: 5
+            periodSeconds: 5
+      volumes:
+        - name: config
+          configMap:
+            name: oauth2-proxy-config

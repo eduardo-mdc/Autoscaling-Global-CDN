@@ -72,7 +72,7 @@ resource "google_compute_health_check" "default" {
 
   http_health_check {
     port         = 80
-    request_path = "/health"
+    request_path = "/ping"
   }
 }
 

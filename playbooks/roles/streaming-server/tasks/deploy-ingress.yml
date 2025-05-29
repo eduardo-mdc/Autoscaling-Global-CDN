@@ -1,124 +1,103 @@
-# playbooks/roles/streaming-server/tasks/deploy-ingress.yml
 ---
-# Deploy NEG-only Ingress and connect to Terraform Load Balancer
+# Simple working solution: Regional Ingresses with shared static IP
+# File: playbooks/roles/streaming-server/tasks/deploy-simple-shared-ingress.yml
 
-- name: Get current region for context
+- name: Get current region from bastion hostname
   shell: "hostname | grep -o 'bastion-[^-]*' | cut -d'-' -f2 || echo 'unknown'"
   register: current_region
 
-- name: Generate backend configuration manifest
-  template:
-    src: backend-config.yaml.j2
-    dest: "{{ manifests_dir }}/backend-config.yaml"
+- name: Set bastion region fact
+  set_fact:
+    bastion_region: "{{ current_region.stdout }}"
 
-- name: Generate NEG-only Ingress manifest
-  template:
-    src: streaming-ingress.yaml.j2
-    dest: "{{ manifests_dir }}/streaming-ingress.yaml"
-
-- name: Debug generated Ingress manifest (first 15 lines)
-  shell: "head -15 {{ manifests_dir }}/streaming-ingress.yaml"
-  register: ingress_manifest_preview
-
-- name: Show Ingress manifest preview
-  debug:
-    msg: |
-      Generated NEG-only Ingress manifest for region {{ current_region.stdout }}:
-      {{ ingress_manifest_preview.stdout_lines | join('\n') }}
-
-- name: Apply backend configuration
+- name: Create OAuth2 Service
   k8s:
     state: present
-    src: "{{ manifests_dir }}/backend-config.yaml"
+    definition:
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: oauth2-proxy
+        namespace: "{{ app_namespace }}"
+        labels:
+          app: oauth2-proxy
+          region: "{{ bastion_region }}"
+      spec:
+        type: LoadBalancer
+        selector:
+          app: oauth2-proxy
+        annotations:
+         #cloud.google.com/load-balancer-type: "Internal"
+        ports:
+          - name: http
+            port: 4180
+            targetPort: 4180
+            protocol: TCP
     wait: true
     wait_timeout: 60
 
-- name: Apply NEG-only Ingress
+- name: Create regional Ingress with shared IP
   k8s:
     state: present
-    src: "{{ manifests_dir }}/streaming-ingress.yaml"
+    definition:
+      apiVersion: networking.k8s.io/v1
+      kind: Ingress
+      metadata:
+        name: "oauth2-{{ bastion_region }}"
+        namespace: "{{ app_namespace }}"
+        labels:
+          app: oauth2-proxy
+          region: "{{ bastion_region }}"
+        annotations:
+          kubernetes.io/ingress.class: "gce"
+          kubernetes.io/ingress.allow-http: "true"
+      spec:
+        defaultBackend:
+          service:
+            name: oauth2-proxy
+            port:
+              number: 4180
+        rules:
+          - http:
+              paths:
+                - path: /
+                  pathType: Prefix
+                  backend:
+                    service:
+                      name: oauth2-proxy
+                      port:
+                        number: 4180
     wait: false
 
-- name: Wait for NEGs to be created
-  pause:
-    seconds: 60
-    prompt: "Waiting for NEGs to be created in region {{ current_region.stdout }}..."
-
-- name: Get NEG status from service
-  shell: |
-    kubectl -n {{ app_namespace }} get svc {{ app_name }} -o jsonpath='{.metadata.annotations.cloud\.google\.com/neg-status}' 2>/dev/null || echo "{}"
-  register: neg_status_raw
-  changed_when: false
-
-- name: Parse NEG information
-  set_fact:
-    neg_info: "{{ neg_status_raw.stdout | from_json }}"
-  when: neg_status_raw.stdout != "{}"
-
-- name: Display NEG creation status
+- name: Display deployment status
   debug:
     msg: |
-      🔗 NEG Status for {{ current_region.stdout }}:
-      {% if neg_info is defined and neg_info.network_endpoint_groups is defined %}
-      - NEG Name: {{ neg_info.network_endpoint_groups['80'] }}
-      - Zones: {{ neg_info.zones | join(', ') }}
-      {% else %}
-      - Status: NEGs not ready yet
-      {% endif %}
+      ✅ Deployed OAuth2 Ingress in region: {{ bastion_region }}
+      
+      🌐 Configuration:
+      - Ingress name: oauth2-{{ bastion_region }}
+      - Static IP: {{ project_name }}-global-ip
+      - Service: oauth2-proxy:4180
+      
+      🔄 Google automatically merges all regional Ingresses using the same static IP
+      
+      ⏱️  Wait 3-5 minutes for load balancer to be ready, then test:
+      curl http://{{ load_balancer_ip | default('PENDING') }}/ 
 
-- name: Connect NEGs to Terraform Load Balancer
-  shell: |
-    NEG_NAME="{{ neg_info.network_endpoint_groups['80'] }}"
-    for zone in {{ neg_info.zones | join(' ') }}; do
-      echo "Adding NEG $NEG_NAME from zone $zone to backend service"
-      gcloud compute backend-services add-backend {{ project_name }}-backend-service \
-        --network-endpoint-group=$NEG_NAME \
-        --network-endpoint-group-zone=$zone \
-        --balancing-mode=RATE \
-        --max-rate=100 \
-        --global || echo "NEG may already be added"
-    done
-  when: neg_info is defined and neg_info.network_endpoint_groups is defined
-  register: connect_negs_result
+- name: Get Ingress status
+  k8s_info:
+    api_version: networking.k8s.io/v1
+    kind: Ingress
+    name: "oauth2-{{ bastion_region }}"
+    namespace: "{{ app_namespace }}"
+  register: ingress_status
 
-- name: Display NEG connection results
+- name: Show Ingress details
   debug:
     msg: |
-      🔄 NEG Connection Results for {{ current_region.stdout }}:
-      {{ connect_negs_result.stdout_lines | default(['No NEGs to connect']) | join('\n') }}
-
-- name: Wait for backend service to update
-  pause:
-    seconds: 30
-    prompt: "Waiting for backend service to update..."
-
-- name: Test Terraform Load Balancer
-  uri:
-    url: "http://{{ load_balancer_ip }}/health"
-    method: GET
-    headers:
-      Host: "{{ domain_name }}"
-    timeout: 10
-  register: lb_test
-  ignore_errors: yes
-
-- name: Verify deployment success
-  debug:
-    msg: |
-      ✅ NEG Integration Complete for {{ current_region.stdout }}
+      📊 Ingress Status for {{ bastion_region }}:
+      - Name: {{ ingress_status.resources[0].metadata.name }}
+      - IP: {{ ingress_status.resources[0].status.loadBalancer.ingress[0].ip | default('Pending') }}
+      - Backend: {{ ingress_status.resources[0].spec.defaultBackend.service.name }}
       
-      📊 Summary:
-      - NEG-only Ingress: Created (no public endpoint)
-      - NEGs connected to Terraform LB: {{ 'Success' if connect_negs_result is defined else 'Pending' }}
-      - Terraform LB test: {{ 'Success' if lb_test.status == 200 else 'Failed' }}
-      
-      🎯 Your Terraform Load Balancer:
-      - IP: {{ load_balancer_ip }}
-      - Domain: {{ domain_name }}
-      - Test: curl -H "Host: {{ domain_name }}" http://{{ load_balancer_ip }}/health
-      
-      {% if lb_test.status != 200 %}
-      🔧 Troubleshooting:
-      - Check backend health: gcloud compute backend-services get-health {{ project_name }}-backend-service --global
-      - Check NEG endpoints: gcloud compute network-endpoint-groups list-network-endpoints {{ neg_info.network_endpoint_groups['80'] }} --zone={{ current_region.stdout }}-a
-      {% endif %}
+      🔍 Check status: kubectl get ingress oauth2-{{ bastion_region }} -n {{ app_namespace }}

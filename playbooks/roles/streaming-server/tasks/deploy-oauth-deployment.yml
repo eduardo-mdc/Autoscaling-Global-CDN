@@ -1,0 +1,47 @@
+- name: Get current region for context
+  shell: "hostname | grep -o 'bastion-[^-]*-[^-]*' | cut -d'-' -f2-"
+  register: current_region
+
+- name: Generate backend configuration manifest
+  template:
+    src: oauth2-proxy-backend-config.yaml.j2
+    dest: "{{ manifests_dir }}/oauth2-proxy-backend-config.yaml"
+
+- name: Generate OAuth2 Proxy manifest
+  template:
+    src: oauth2-proxy-auth.yaml.j2
+    dest: "{{ manifests_dir }}/oauth2-proxy-auth.yaml"
+
+- name: Debug generated OAuth2 Proxy manifest (first 20 lines)
+  shell: "head -20 {{ manifests_dir }}/oauth2-proxy-auth.yaml"
+  register: oauth_manifest_preview
+
+- name: Show OAuth2 Proxy manifest preview
+  debug:
+    msg: |
+      Generated OAuth2 Proxy manifest for region {{ current_region.stdout }}:
+      {{ oauth_manifest_preview.stdout_lines | join('\n') }}
+
+- name: Apply backend configuration
+  k8s:
+    state: present
+    src: "{{ manifests_dir }}/oauth2-proxy-backend-config.yaml"
+    wait: true
+    wait_timeout: 60
+
+- name: Apply OAuth2 Proxy
+  k8s:
+    state: present
+    src: "{{ manifests_dir }}/oauth2-proxy-auth.yaml"
+    wait: true
+    wait_timeout: 120
+
+- name: Wait for OAuth2 Proxy to be ready
+  shell: |
+    kubectl wait --for=condition=ready pod \
+      -l app=oauth2-proxy \
+      -n {{ app_namespace }} \
+      --timeout=120s
+  register: oauth_ready_result
+  ignore_errors: yes
+

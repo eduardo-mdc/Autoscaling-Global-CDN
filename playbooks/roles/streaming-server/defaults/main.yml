@@ -165,5 +165,29 @@ extra_annotations:
   # PVC binding timeout
   gcs_pvc_bind_timeout : 120
 
-# Basic Auth settings
-basic_auth_hash: "YWRtaW46JGFwcjEkc3ZSQ0I3ZkskSExiaWJIU0cuYTMyTWNmOWdQWWdFLwo="
+# OAuth2 Proxy Configuration
+enable_oauth2_auth: true
+oauth_client_id: "313506890289-306orl15c02jl7henbtc5c7ln094b0fa.apps.googleusercontent.com"
+oauth_client_secret: "GOCSPX-vCrhDSDzxl6zcxIMGTm5d4f9xhV"
+# OAuth2 Proxy resource settings
+oauth_proxy_replicas: 2
+oauth_proxy_version: "v7.4.0"
+oauth_proxy_memory_request: "64Mi"
+oauth_proxy_cpu_request: "50m"
+oauth_proxy_memory_limit: "128Mi"
+oauth_proxy_cpu_limit: "100m"
+
+# Public endpoints (no auth required)
+public_endpoints:
+  - "/health"
+  - "/hls"
+  - "/metrics"
+  - "/oauth2"
+
+# Protected endpoints (OAuth required)
+protected_endpoints:
+  - "/"
+  - "/videos"
+  - "/admin"
+  - "/files"
+  - "/live"

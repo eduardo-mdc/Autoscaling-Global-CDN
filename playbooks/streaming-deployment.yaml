@@ -31,58 +31,65 @@
         msg: |
           Is cold cluster: {{ is_cold_cluster }}
 
-    - name: Create namespace
-      k8s:
-        name: streaming
-        api_version: v1
-        kind: Namespace
-        state: present
+#    - name: Create namespace
+#      k8s:
+#        name: streaming
+#        api_version: v1
+#        kind: Namespace
+#        state: present
+#
+#    - name: Deploy ConfigMaps
+#      include_role:
+#        name: streaming-server
+#        tasks_from: deploy-configmap
+#
+#    # Deploy with different strategies for hot vs cold
+#    - name: Deploy streaming server (hot cluster)
+#      include_role:
+#        name: streaming-server
+#        tasks_from: deploy-deployment
+#      vars:
+#        initial_replicas: 2
+#        wait_for_rollout: true
+#        rollout_timeout: 300
+#      when: not is_cold_cluster
+#
+#    - name: Deploy streaming server (cold cluster - may fail)
+#      include_role:
+#        name: streaming-server
+#        tasks_from: deploy-deployment
+#      vars:
+#        initial_replicas: 1
+#        wait_for_rollout: false  # Don't wait for rollout on cold clusters
+#        rollout_timeout: 60
+#      when: is_cold_cluster
+#      ignore_errors: yes
+#      register: cold_deployment_result
+#
+#    - name: Handle cold cluster deployment failure
+#      debug:
+#        msg: |
+#          Cold cluster deployment result: {{ 'SUCCESS' if cold_deployment_result is succeeded else 'FAILED' }}
+#          This is expected if cluster has 0 nodes.
+#          Deployment will succeed when autoscaler brings up nodes.
+#      when: cold_deployment_result is failed
+#
+#    - name: Deploy service
+#      include_role:
+#        name: streaming-server
+#        tasks_from: deploy-service
 
-    - name: Deploy ConfigMaps
-      include_role:
-        name: streaming-server
-        tasks_from: deploy-configmap
 
-    # Deploy with different strategies for hot vs cold
-    - name: Deploy streaming server (hot cluster)
-      include_role:
-        name: streaming-server
-        tasks_from: deploy-deployment
-      vars:
-        initial_replicas: 2
-        wait_for_rollout: true
-        rollout_timeout: 300
-      when: not is_cold_cluster
 
-    - name: Deploy streaming server (cold cluster - may fail)
-      include_role:
-        name: streaming-server
-        tasks_from: deploy-deployment
-      vars:
-        initial_replicas: 1
-        wait_for_rollout: false  # Don't wait for rollout on cold clusters
-        rollout_timeout: 60
-      when: is_cold_cluster
-      ignore_errors: yes
-      register: cold_deployment_result
+  #  - name: Deploy Oauth2 deployment
+    #  include_role:
+     #   name: streaming-server
+     #   tasks_from: deploy-oauth-deployment
 
-    - name: Handle cold cluster deployment failure
-      debug:
-        msg: |
-          Cold cluster deployment result: {{ 'SUCCESS' if cold_deployment_result is succeeded else 'FAILED' }}
-          This is expected if cluster has 0 nodes.
-          Deployment will succeed when autoscaler brings up nodes.
-      when: cold_deployment_result is failed
-
-    - name: Deploy service
-      include_role:
-        name: streaming-server
-        tasks_from: deploy-service
-
-    - name: Deploy Ingress
-      include_role:
-        name: streaming-server
-        tasks_from: deploy-ingress
+    - name : Deploy Oauth Ingress
+      include_role :
+        name : streaming-server
+        tasks_from : deploy-ingress
 
 #    - name: Deploy HPA for automatic scaling
 #      include_role:
