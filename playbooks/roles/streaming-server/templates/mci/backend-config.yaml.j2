@@ -2,10 +2,10 @@
 apiVersion: cloud.google.com/v1
 kind: BackendConfig
 metadata:
-  name: {{ project_name }}-backend-config
+  name: {{ project_name }}-oauth2-backend-config
   namespace: {{ app_namespace }}
   labels:
-    app: {{ app_name }}
+    app: oauth2-proxy
     created-by: ansible
 spec:
   # Health check configuration - OAuth2 proxy /ping endpoint
@@ -15,24 +15,69 @@ spec:
     healthyThreshold: {{ health_check_healthy_threshold | default('2') }}
     unhealthyThreshold: {{ health_check_unhealthy_threshold | default('3') }}
     type: HTTP
-    requestPath: "/health"  # OAuth2 proxy health endpoint
-    port: 80  # OAuth2 proxy port
+    requestPath: "/ping"  # OAuth2 proxy health endpoint
+    port: 4180  # OAuth2 proxy external port
 
-  # Timeout configuration for streaming workloads
+  # Timeout configuration for OAuth2 proxy
   timeoutSec: {{ backend_timeout | default('60') }}
 
   # Connection draining for graceful shutdowns
   connectionDraining:
     drainingTimeoutSec: {{ connection_draining_timeout | default('60') }}
 
-  # Session affinity (disabled for free load balancing as requested)
+  # Session affinity for OAuth2 cookies
   sessionAffinity:
-    affinityType: "NONE"
+    affinityType: "CLIENT_IP"
+    affinityCookieTtlSec: 3600
 
-  # Custom request headers for streaming optimization
+  # Custom request headers for OAuth2
   customRequestHeaders:
     headers:
       - "X-Real-IP: {client_ip_address}"
-      - "X-Streaming-Server: {{ app_name }}"
+      - "X-Forwarded-Proto: https"
+      - "X-OAuth2-Proxy: true"
+
   iap:
-    enabled : false
+    enabled: false
+
+---
+# Separate backend config for streaming content (when accessed directly)
+apiVersion: cloud.google.com/v1
+kind: BackendConfig
+metadata:
+  name: {{ project_name }}-streaming-backend-config
+  namespace: {{ app_namespace }}
+  labels:
+    app: {{ app_name }}
+    created-by: ansible
+spec:
+  # Health check for direct streaming access
+  healthCheck:
+    checkIntervalSec: 15
+    timeoutSec: 10
+    healthyThreshold: 2
+    unhealthyThreshold: 3
+    type: HTTP
+    requestPath: "/health"
+    port: 80
+
+  # Longer timeout for video streaming
+  timeoutSec: 120
+
+  # Connection draining
+  connectionDraining:
+    drainingTimeoutSec: 60
+
+  # No session affinity for streaming content
+  sessionAffinity:
+    affinityType: "NONE"
+
+  # Custom headers for streaming
+  customRequestHeaders:
+    headers:
+      - "X-Real-IP: {client_ip_address}"
+      - "X-Forwarded-Proto: https"
+      - "X-Content-Source: streaming-backend"
+
+  iap:
+    enabled: false

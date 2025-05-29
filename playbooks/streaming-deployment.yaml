@@ -38,33 +38,33 @@
 #        kind: Namespace
 #        state: present
 #
-    - name: Deploy ConfigMaps
-      include_role:
-        name: streaming-server
-        tasks_from: deploy-configmap
-
-    # Deploy with different strategies for hot vs cold
-    - name: Deploy streaming server (hot cluster)
-      include_role:
-        name: streaming-server
-        tasks_from: deploy-deployment
-      vars:
-        initial_replicas: 2
-        wait_for_rollout: true
-        rollout_timeout: 300
-      when: not is_cold_cluster
-
-    - name: Deploy streaming server (cold cluster - may fail)
-      include_role:
-        name: streaming-server
-        tasks_from: deploy-deployment
-      vars:
-        initial_replicas: 1
-        wait_for_rollout: false  # Don't wait for rollout on cold clusters
-        rollout_timeout: 60
-      when: is_cold_cluster
-      ignore_errors: yes
-      register: cold_deployment_result
+#    - name: Deploy ConfigMaps
+#      include_role:
+#        name: streaming-server
+#        tasks_from: deploy-configmap
+#
+#    # Deploy with different strategies for hot vs cold
+#    - name: Deploy streaming server (hot cluster)
+#      include_role:
+#        name: streaming-server
+#        tasks_from: deploy-deployment
+#      vars:
+#        initial_replicas: 2
+#        wait_for_rollout: true
+#        rollout_timeout: 300
+#      when: not is_cold_cluster
+#
+#    - name: Deploy streaming server (cold cluster - may fail)
+#      include_role:
+#        name: streaming-server
+#        tasks_from: deploy-deployment
+#      vars:
+#        initial_replicas: 1
+#        wait_for_rollout: false  # Don't wait for rollout on cold clusters
+#        rollout_timeout: 60
+#      when: is_cold_cluster
+#      ignore_errors: yes
+#      register: cold_deployment_result
 
 #    - name: Handle cold cluster deployment failure
 #      debug:
@@ -74,11 +74,11 @@
 #          Deployment will succeed when autoscaler brings up nodes.
 #      when: cold_deployment_result is failed
 
-#
-#    - name : Deploy Nginx Ingress
-#      include_role :
-#        name : streaming-server
-#        tasks_from : deploy-ingress
+
+    - name : Deploy Nginx Ingress
+      include_role :
+        name : streaming-server
+        tasks_from : deploy-ingress
 
 #    - name: Deploy HPA for automatic scaling
 #      include_role:

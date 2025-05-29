@@ -1,33 +1,37 @@
 ---
 config:
-  theme: redux
-  look: handDrawn
   layout: elk
 ---
 flowchart TB
     subgraph subGraph0["🌍 Global Infrastructure"]
         Users["🌐 Global Users<br>(Europe, Americas, APAC)"]
-        GLB["🔄 Global HTTPS Load Balancer<br>IP: Static Global IP<br>SSL: Managed Certificate<br>Domain: adm-cdn.pt"]
+        GLB["🔄 Global HTTPS Load Balancer<br>IP: 34.110.245.13<br>SSL: Managed Certificate<br>Domain: adm-cdn.pt"]
         DNS["🌐 Cloud DNS Zone<br>adm-cdn.pt<br>DNSSEC Enabled"]
+        WAF["🛡️ Cloud Armor WAF<br>XSS Protection<br>Rate Limiting: 200/min<br>DDoS Protection"]
     end
     subgraph subGraph1["🔧 Admin Infrastructure - 10.250.0.0/24"]
         AdminVM["🖥️ Admin VM<br>Public IP: X.X.X.X<br>Private IP: 10.250.0.10<br>Type: e2-standard-2<br>Services: gcloud, kubectl"]
         AdminLB["⚖️ Admin Webapp LB<br>admin.adm-cdn.pt<br>Flask App + GCS Mount"]
         ContentMgr["📦 Content Manager<br>Master Bucket: EU<br>Sync Scripts"]
-        ScaleFunc["🤖 Cold Scaler Function<br>Triggers: Geographic Traffic<br>Latency Threshold<br>Scheduled Checks<br>Uses: gcloud CLI"]
+        ScaleFunc["🤖 Cold Scaler Cron<br>Triggers: Geographic Traffic<br>Latency Threshold<br>Scheduled Checks<br>Uses: gcloud CLI"]
+    end
+    subgraph subGraph15["🎯 Multi-Cluster Ingress (MCI)"]
+        MCI["🔗 MultiClusterIngress<br>Global IP: 34.110.245.13<br>Config Cluster: europe-west2<br>SSL: uporto-cd-admin-webapp-ssl"]
+        MCS["⚖️ MultiClusterService<br>Backend Config<br>Health Check: /health<br>Session Affinity: None"]
+        OAuth2["🔐 Identity-Aware Proxy<br>Google Authentication<br>All Endpoints Protected"]
     end
     subgraph subGraph5["📹 Streaming Pods EU - Auto-scaling (2-5)"]
-        PodEU1["📹 Streaming Pod 1<br>Deployment<br>nginx + GCS CSI<br>Ready"]
-        PodEU2["📹 Streaming Pod 2<br>Deployment<br>nginx + GCS CSI<br>Ready"]
+        PodEU1["📹 Streaming Pod 1<br>Deployment + IAP<br>nginx + GCS CSI<br>Ready"]
+        PodEU2["📹 Streaming Pod 2<br>Deployment + IAP<br>nginx + GCS CSI<br>Ready"]
         PodEUN["📹 ... Pod N<br>Auto-scaled<br>Based on traffic"]
+        SuricataEU["🛡️ Suricata IDS<br>DaemonSet Pod<br>Network monitoring"]
     end
-    subgraph subGraph4["🔥 HOT GKE Cluster EU"]
-        MasterEU["🎛️ Control Plane EU<br>172.16.1.0/28<br>Private Endpoint<br>Workload Identity"]
+    subgraph subGraph4["🔥 HOT GKE Cluster EU (Config Cluster)"]
+        MasterEU["🎛️ Control Plane EU<br>172.16.1.0/28<br>Private Endpoint<br>Workload Identity<br>GKE Fleet: Registered"]
         NodePoolEU["⚙️ Hot Node Pool<br>e2-standard-2<br>Min: 2, Max: 5<br>Always Running"]
         subGraph5
-        IngressEU["🔗 Ingress Controller<br>NEG-only Mode<br>No Public IP"]
-        ServiceEU["⚖️ K8s Service<br>NodePort<br>NEG Annotations"]
-        NEGEU["🎯 Network Endpoint Group<br>Zone: europe-west2-a/b/c<br>Status: Healthy"]
+        ServiceEU["⚖️ K8s Service MCI<br>Type: ClusterIP<br>NEG Annotations<br>Backend Config"]
+        NEGEU["🎯 Network Endpoint Group<br>Zone: europe-west2-a/b/c<br>Status: Healthy<br>MCI Managed"]
     end
     subgraph subGraph3["VPC-EU - 10.1.0.0/20"]
         BastionEU["🔧 Bastion Host EU<br>10.1.x.x<br>Private Only<br>kubectl access"]
@@ -38,17 +42,17 @@ flowchart TB
         subGraph3
     end
     subgraph subGraph9["📹 Streaming Pods US - Auto-scaling (2-5)"]
-        PodUS1["📹 Streaming Pod 1<br>Deployment<br>nginx + GCS CSI<br>Ready"]
-        PodUS2["📹 Streaming Pod 2<br>Deployment<br>nginx + GCS CSI<br>Ready"]
+        PodUS1["📹 Streaming Pod 1<br>Deployment + IAP<br>nginx + GCS CSI<br>Ready"]
+        PodUS2["📹 Streaming Pod 2<br>Deployment + IAP<br>nginx + GCS CSI<br>Ready"]
         PodUSN["📹 ... Pod N<br>Auto-scaled<br>Based on traffic"]
+        SuricataUS["🛡️ Suricata IDS<br>DaemonSet Pod<br>Network monitoring"]
     end
-    subgraph subGraph8["🔥 HOT GKE Cluster US"]
-        MasterUS["🎛️ Control Plane US<br>172.16.2.0/28<br>Private Endpoint<br>Workload Identity"]
+    subgraph subGraph8["🔥 HOT GKE Cluster US (Member Cluster)"]
+        MasterUS["🎛️ Control Plane US<br>172.16.2.0/28<br>Private Endpoint<br>Workload Identity<br>GKE Fleet: Registered"]
         NodePoolUS["⚙️ Hot Node Pool<br>e2-standard-2<br>Min: 2, Max: 5<br>Always Running"]
         subGraph9
-        IngressUS["🔗 Ingress Controller<br>NEG-only Mode<br>No Public IP"]
-        ServiceUS["⚖️ K8s Service<br>NodePort<br>NEG Annotations"]
-        NEGUS["🎯 Network Endpoint Group<br>Zone: us-south1-a/b/c<br>Status: Healthy"]
+        ServiceUS["⚖️ K8s Service MCI<br>Type: ClusterIP<br>NEG Annotations<br>Backend Config"]
+        NEGUS["🎯 Network Endpoint Group<br>Zone: us-south1-a/b/c<br>Status: Healthy<br>MCI Managed"]
     end
     subgraph subGraph7["VPC-US - 10.2.0.0/20"]
         BastionUS["🔧 Bastion Host US<br>10.2.x.x<br>Private Only<br>kubectl access"]
@@ -59,16 +63,14 @@ flowchart TB
         subGraph7
     end
     subgraph subGraph13["📹 Streaming Pods ASIA - Traffic-based Scaling (0-3)"]
-        PodASIA1["💤 Pod 1<br>Deployment<br>nginx + GCS CSI<br>⚠️ Not Ready<br>Scale: 0"]
-        ScaleFunc["🤖 Cold Scaler Function<br>Triggers: Geographic Traffic<br>Latency Threshold<br>Scheduled Checks"]
+        PodASIA1["💤 Pod 1<br>Deployment + OAuth2<br>nginx + GCS CSI<br>⚠️ Not Ready<br>Scale: 0"]
     end
-    subgraph subGraph12["❄️ COLD GKE Cluster ASIA"]
-        MasterASIA["🎛️ Control Plane ASIA<br>172.16.3.0/28<br>Private Endpoint<br>Workload Identity"]
+    subgraph subGraph12["❄️ COLD GKE Cluster ASIA (Member Cluster)"]
+        MasterASIA["🎛️ Control Plane ASIA<br>172.16.3.0/28<br>Private Endpoint<br>Workload Identity<br>GKE Fleet: Registered"]
         NodePoolASIA["⚙️ Cold Node Pool<br>e2-standard-2<br>Min: 0, Max: 3<br>🔽 SCALED DOWN"]
         subGraph13
-        IngressASIA["🔗 Ingress Controller<br>NEG-only Mode<br>No Public IP<br>⚠️ No Backends"]
-        ServiceASIA["⚖️ K8s Service<br>NodePort<br>NEG Annotations<br>⚠️ No Endpoints"]
-        NEGASIA["🎯 Network Endpoint Group<br>Zone: asia-southeast1-a/b/c<br>❌ No Healthy Backends"]
+        ServiceASIA["⚖️ K8s Service MCI<br>Type: ClusterIP<br>NEG Annotations<br>Backend Config<br>⚠️ No Endpoints"]
+        NEGASIA["🎯 Network Endpoint Group<br>Zone: asia-southeast1-a/b/c<br>❌ No Healthy Backends<br>MCI Managed"]
     end
     subgraph subGraph11["VPC-ASIA - 10.3.0.0/20"]
         BastionASIA["🔧 Bastion Host ASIA<br>10.3.x.x<br>Private Only<br>kubectl access"]
@@ -84,18 +86,27 @@ flowchart TB
         RegionalBucketsUS["🗄️ US Cache Bucket<br>us-south1<br>Synced from Master"]
         RegionalBucketsASIA["🗄️ ASIA Cache Bucket<br>asia-southeast1<br>Synced from Master"]
     end
+    subgraph subGraph16["🔐 Authentication & Security"]
+        GoogleAuth["🔑 Google Authentication"]
+        SuricataIDS["🛡️ Suricata IDS<br>DaemonSet on all nodes"]
+    end
     Users --> DNS
     DNS --> GLB
-    GLB --> NEGEU & NEGUS & NEGASIA
-    NEGEU --> IngressEU
-    NEGUS --> IngressUS
-    NEGASIA --> IngressASIA
-    IngressEU --> ServiceEU
-    IngressUS --> ServiceUS
-    IngressASIA --> ServiceASIA
+    GLB --> WAF
+    WAF --> MCI
+    MCI --> MCS
+    MCS --> OAuth2
+    OAuth2 --> NEGEU & NEGUS & NEGASIA
+    NEGEU --> ServiceEU
+    NEGUS --> ServiceUS
+    NEGASIA --> ServiceASIA
     ServiceEU --> PodEU1 & PodEU2 & PodEUN
     ServiceUS --> PodUS1 & PodUS2 & PodUSN
     ServiceASIA -. No Healthy Endpoints .-> PodASIA1
+    GoogleAuth --> OAuth2
+    SuricataIDS -. Monitor Traffic .-> PodEU1 & PodEU2 & PodEUN & PodUS1 & PodUS2 & PodUSN & PodASIA1
+    SuricataEU -. Network Analysis .-> SuricataIDS
+    SuricataUS -. Network Analysis .-> SuricataIDS
     AdminVM --> AdminLB
     AdminVM -. VPC Peering<br>SSH Tunnel .-> BastionEU & BastionUS & BastionASIA
     BastionEU -. kubectl<br>Authorized Networks .-> MasterEU
@@ -116,54 +127,63 @@ flowchart TB
     StorageUS --> PodUS1 & PodUS2 & PodUSN
     StorageASIA -. Mount Ready .-> PodASIA1
     ScaleFunc -. Monitor Traffic<br>Geographic Analysis .-> GLB
-    ScaleFunc -. gcloud container clusters resize<br>Asia Traffic > 10%<br> Asia Latency > 500ms<br> Asia Requests 10 Min > 50 .-> NodePoolASIA
-    AdminVM -. Hosts Scaler .-> ScaleFunc
-    Users:::public
-    GLB:::public
-    DNS:::public
-    AdminVM:::admin
-    AdminLB:::admin
-    ContentMgr:::admin
-    PodEU1:::hotStreaming
-    PodEU2:::hotStreaming
-    PodEUN:::hotStreaming
-    MasterEU:::private
-    NodePoolEU:::hotInfra
-    IngressEU:::public
-    ServiceEU:::public
-    NEGEU:::public
-    BastionEU:::private
-    StorageEU:::storage
-    PodUS1:::hotStreaming
-    PodUS2:::hotStreaming
-    PodUSN:::hotStreaming
-    MasterUS:::private
-    NodePoolUS:::hotInfra
-    IngressUS:::public
-    ServiceUS:::public
-    NEGUS:::public
-    BastionUS:::private
-    StorageUS:::storage
-    PodASIA1:::coldStreaming
-    ScaleFunc:::scaling
-    MasterASIA:::private
-    NodePoolASIA:::coldInfra
-    IngressASIA:::coldPublic
-    ServiceASIA:::coldPublic
-    NEGASIA:::coldPublic
-    BastionASIA:::private
-    StorageASIA:::storage
-    MasterBucket:::storage
-    RegionalBucketsEU:::storage
-    RegionalBucketsUS:::storage
-    RegionalBucketsASIA:::storage
-    classDef public fill:#e1f5fe,stroke:#01579b,stroke-width:2px
-    classDef private fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
-    classDef hotStreaming fill:#ffebee,stroke:#c62828,stroke-width:3px
-    classDef coldStreaming fill:#e3f2fd,stroke:#1565c0,stroke-width:2px,stroke-dasharray: 5 5
-    classDef admin fill:#e8f5e8,stroke:#2e7d32,stroke-width:2px
-    classDef hotInfra fill:#fff3e0,stroke:#f57c00,stroke-width:2px
-    classDef coldInfra fill:#fafafa,stroke:#616161,stroke-width:2px,stroke-dasharray: 3 3
-    classDef coldPublic fill:#e8eaf6,stroke:#3f51b5,stroke-width:2px,stroke-dasharray: 3 3
-    classDef scaling fill:#f1f8e9,stroke:#689f38,stroke-width:2px
-    classDef storage fill:#fff8e1,stroke:#ff8f00,stroke-width:2px
+    ScaleFunc -. gcloud container clusters resize<br>Asia Traffic &gt; 10%<br> Asia Latency &gt; 500ms<br> Asia Requests 10 Min &gt; 50 .-> NodePoolASIA
+AdminVM -. Hosts Scaler .-> ScaleFunc
+AdminLB -- Calls --> ContentMgr
+Users:::public
+GLB:::public
+DNS:::public
+WAF:::public
+AdminVM:::admin
+AdminLB:::admin
+ContentMgr:::admin
+ScaleFunc:::scaling
+MCI:::mci
+MCS:::mci
+OAuth2:::auth
+PodEU1:::hotStreaming
+PodEU2:::hotStreaming
+PodEUN:::hotStreaming
+SuricataEU:::security
+MasterEU:::private
+NodePoolEU:::hotInfra
+ServiceEU:::mci
+NEGEU:::mci
+BastionEU:::private
+StorageEU:::storage
+PodUS1:::hotStreaming
+PodUS2:::hotStreaming
+PodUSN:::hotStreaming
+SuricataUS:::security
+MasterUS:::private
+NodePoolUS:::hotInfra
+ServiceUS:::mci
+NEGUS:::mci
+BastionUS:::private
+StorageUS:::storage
+PodASIA1:::coldStreaming
+MasterASIA:::private
+NodePoolASIA:::coldInfra
+ServiceASIA:::coldMci
+NEGASIA:::coldMci
+BastionASIA:::private
+StorageASIA:::storage
+MasterBucket:::storage
+RegionalBucketsEU:::storage
+RegionalBucketsUS:::storage
+RegionalBucketsASIA:::storage
+GoogleAuth:::auth
+SuricataIDS:::security
+classDef public fill:#e1f5fe,stroke:#01579b,stroke-width:2px
+classDef private fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+classDef hotStreaming fill:#ffebee,stroke:#c62828,stroke-width:3px
+classDef coldStreaming fill:#e3f2fd,stroke:#1565c0,stroke-width:2px,stroke-dasharray: 5 5
+classDef admin fill:#e8f5e8,stroke:#2e7d32,stroke-width:2px
+classDef hotInfra fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+classDef coldInfra fill:#fafafa,stroke:#616161,stroke-width:2px,stroke-dasharray: 3 3
+classDef coldMci fill:#e8eaf6,stroke:#3f51b5,stroke-width:2px,stroke-dasharray: 3 3
+classDef scaling fill:#f1f8e9,stroke:#689f38,stroke-width:2px
+classDef storage fill:#fff8e1,stroke:#ff8f00,stroke-width:2px
+classDef mci fill:#e8f5e8,stroke:#388e3c,stroke-width:3px
+classDef auth fill:#fce4ec,stroke:#c2185b,stroke-width:2px
+classDef security fill:#ffebee,stroke:#d32f2f,stroke-width:2px

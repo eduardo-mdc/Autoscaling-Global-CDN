@@ -1,3 +1,27 @@
+# OAuth2 Proxy Service for MCI
+apiVersion: v1
+kind: Service
+metadata:
+  name: oauth2-proxy-mci
+  namespace: {{ app_namespace }}
+  labels:
+    app: oauth2-proxy
+    region: {{ bastion_region }}
+  annotations:
+    cloud.google.com/neg: '{"ingress": true}'
+    cloud.google.com/backend-config: '{"default": "{{ project_name }}-oauth2-backend-config"}'
+spec:
+  type: ClusterIP
+  selector:
+    app: oauth2-proxy
+  ports:
+    - name: http
+      port: 4180
+      targetPort: 4180
+      protocol: TCP
+
+---
+# Streaming Service for MCI (used by OAuth2 proxy as upstream)
 apiVersion: v1
 kind: Service
 metadata:
@@ -8,7 +32,7 @@ metadata:
     region: {{ bastion_region }}
   annotations:
     cloud.google.com/neg: '{"ingress": true}'
-    cloud.google.com/backend-config: '{"default": "{{ project_name }}-backend-config"}'
+    cloud.google.com/backend-config: '{"default": "{{ project_name }}-streaming-backend-config"}'
 spec:
   type: ClusterIP
   selector:

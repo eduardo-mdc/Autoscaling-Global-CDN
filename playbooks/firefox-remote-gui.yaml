@@ -1,0 +1,78 @@
+---
+- name: Install Firefox and GUI packages for X11 forwarding
+  hosts: digital_ocean_clients
+  become: yes
+  tasks:
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+
+    - name : Install X11 and GUI packages
+      apt:
+          name :
+            - xauth
+            - x11-apps
+            - x11-utils
+            - xvfb
+            - libgtk-3-0
+            - libdbus-glib-1-2
+            - libxt6
+            - libxrender1
+            - libxcomposite1
+            - libxdamage1
+            - libxrandr2
+            - libasound2t64
+            - libpangocairo-1.0-0
+            - libatk1.0-0
+            - libcairo-gobject2
+            - libgdk-pixbuf2.0-0
+          state : present
+
+    - name: Install Firefox
+      apt:
+        name: firefox
+        state: present
+
+    - name: Configure SSH for X11 forwarding
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^#?X11Forwarding'
+        line: 'X11Forwarding yes'
+        backup: yes
+      notify: restart sshd
+
+    - name: Configure SSH X11 display offset
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^#?X11DisplayOffset'
+        line: 'X11DisplayOffset 10'
+        backup: yes
+      notify: restart sshd
+
+    - name: Enable X11UseLocalhost
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^#?X11UseLocalhost'
+        line: 'X11UseLocalhost no'
+        backup: yes
+      notify: restart sshd
+
+    - name : Display SSH commands for Firefox
+      debug :
+          msg : |
+            🔥 Firefox GUI Setup Complete!
+            
+            SSH Command for this host:
+            ssh -X {{ ansible_user }}@{{ ansible_default_ipv4.address }} 
+            
+            Or connect first, then run:
+            ssh -X {{ ansible_user }}@{{ ansible_default_ipv4.address }}
+    
+  
+
+  handlers:
+    - name: restart sshd
+      service:
+        name: ssh
+        state: restarted
