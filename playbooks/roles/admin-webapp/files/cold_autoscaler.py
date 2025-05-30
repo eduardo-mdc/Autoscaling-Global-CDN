@@ -497,67 +497,93 @@ def scale_cluster_nodes(region, target_nodes):
 
         logger.info(f"Current autoscaling: min={current_min}, max={current_max}")
         logger.info(f"Target autoscaling: min={min_nodes}, max={max_nodes}")
+        if target_nodes == 0:
+            cmd = [
+                'gcloud', 'container', 'node-pools', 'update', node_pool_name,
+                '--cluster', cluster_name,
+                '--enable-autoscaling',
+                '--min-nodes', '0',
+                '--max-nodes', '0',
+                '--region', region,
+                '--project', PROJECT_ID,
+                '--quiet'
+            ]
+            logger.info(f"🔄 Updating autoscaling: {' '.join(cmd)}")
+            subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=180)
+            cmd = [
+                'gcloud', 'container', 'node-pools', 'update', node_pool_name,
+                '--cluster', cluster_name,
+                '--enable-autoscaling',
+                '--total-min-nodes', '0',
+                '--total-max-nodes', '0',
+                '--region', region,
+                '--project', PROJECT_ID,
+                '--quiet'
+            ]
+            logger.info(f"🔄 Updating autoscaling: {' '.join(cmd)}")
+            subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=180)
 
-        if current_min == min_nodes and current_max == max_nodes:
-            return {
-                'region': region,
-                'cluster_name': cluster_name,
-                'node_pool_name': node_pool_name,
-                'current_min': current_min,
-                'current_max': current_max,
-                'target_min': min_nodes,
-                'target_max': max_nodes,
-                'status': 'no_change',
-                'message': 'Already at target autoscaling settings'
-            }
-
-        cmd = [
-            'gcloud', 'container', 'node-pools', 'update', cluster_name,
-            '--enable-autoscaling',
-            '--min-nodes', str(min_nodes // 3),
-            '--max-nodes', str(max_nodes // 3),
-            '--node-pool', node_pool_name,
-            '--total-min-nodes', str(min_nodes),
-            '--total-max-nodes', str(max_nodes),
-            '--region', region,
-            '--project', PROJECT_ID,
-            '--quiet'
-        ]
-
-        logger.info(f"🔄 Updating TOTAL autoscaling for {cluster_name}/{node_pool_name}: total-min={min_nodes}, total-max={max_nodes}")
-
-        result = subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=180)
-
-        if max_nodes > 0 and current_max == 0:
-            logger.info("Cluster was at 0 max nodes, the autoscaler will now scale up based on demand")
-
-            resize_cmd = [
-                'gcloud', 'container', 'node-pools', 'update', cluster_name,
-                '--node-pool', node_pool_name,
-                '--min-nodes', str(min_nodes // 3),
-                '--max-nodes', str(max_nodes // 3),
-                '--total-min-nodes', str(min_nodes),
-                '--total-max-nodes', str(max_nodes),
+            # Kill all nodes - direct resize to 0
+            cmd = [
+                 'gcloud', 'container', 'clusters', 'resize', cluster_name,
+                 '--node-pool', node_pool_name,
+                 '--num-nodes', '0',
+                 '--region', region,
+                 '--project', PROJECT_ID,
+                 '--quiet'
+            ]
+        else:
+            # Scale up - first update autoscaling then resize
+            update_cmd = [
+                'gcloud', 'container', 'node-pools', 'update', node_pool_name,
+                '--cluster', cluster_name,
+                '--enable-autoscaling',
+                '--min-nodes', '0',
+                '--max-nodes', str(target_nodes),
                 '--region', region,
                 '--project', PROJECT_ID,
                 '--quiet'
             ]
 
-            logger.info(f"🔄 First resizing to 1 node: {' '.join(resize_cmd)}")
-            subprocess.run(resize_cmd, capture_output=True, text=True, check=True, timeout=300)
 
-        logger.info(f"✅ Successfully updated autoscaling for {region}")
+            logger.info(f"🔄 Updating autoscaling: {' '.join(update_cmd)}")
+            subprocess.run(update_cmd, capture_output=True, text=True, check=True, timeout=180)
+
+            # Scale up - first update autoscaling then resize
+            update_cmd = [
+                'gcloud', 'container', 'node-pools', 'update', node_pool_name,
+                '--cluster', cluster_name,
+                '--enable-autoscaling',
+                '--total-min-nodes', '0',
+                '--total-max-nodes', str(target_nodes),
+                '--region', region,
+                '--project', PROJECT_ID,
+                '--quiet'
+            ]
+
+            logger.info(f"🔄 Updating autoscaling: {' '.join(update_cmd)}")
+            subprocess.run(update_cmd, capture_output=True, text=True, check=True, timeout=180)
+
+            # Then resize to 1 node to trigger scaling
+            cmd = [
+                'gcloud', 'container', 'clusters', 'resize', cluster_name,
+                '--node-pool', node_pool_name,
+                '--num-nodes', '1',
+                '--region', region,
+                '--project', PROJECT_ID,
+                '--quiet'
+            ]
+
+        logger.info(f"🔄 Executing: {' '.join(cmd)}")
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=300)
 
         return {
             'region': region,
             'cluster_name': cluster_name,
             'node_pool_name': node_pool_name,
-            'current_min': current_min,
-            'current_max': current_max,
-            'target_min': min_nodes,
-            'target_max': max_nodes,
-            'status': 'autoscaling_updated',
-            'message': f'Autoscaling updated: min={min_nodes}, max={max_nodes}'
+            'target_nodes': target_nodes,
+            'status': 'resized',
+            'message': f'Pool resized to {target_nodes} nodes'
         }
 
     except subprocess.CalledProcessError as e:
