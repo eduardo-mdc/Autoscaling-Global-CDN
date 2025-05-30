@@ -4,8 +4,7 @@ output "ids_endpoints" {
     for region, endpoint in google_cloud_ids_endpoint.ids_endpoint : region => {
       id                    = endpoint.id
       name                  = endpoint.name
-      self_link             = endpoint.self_link
-      endpoint_id           = endpoint.endpoint_id
+      location              = endpoint.location
       severity              = endpoint.severity
       forwarding_rule       = endpoint.endpoint_forwarding_rule
       threat_exceptions     = endpoint.threat_exceptions

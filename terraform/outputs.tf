@@ -83,11 +83,6 @@ output "ids_endpoints" {
   value       = module.ids.ids_endpoints
 }
 
-output "monitoring_dashboard_url" {
-  description = "URL to access the created monitoring dashboard"
-  value       = module.monitoring.dashboard_url
-}
-
 output "dns_name_servers" {
   description = "The list of nameservers that should be configured with the domain registrar"
   value       = var.domain_name != "" ? module.dns[0].name_servers : []
@@ -100,9 +95,14 @@ output "admin_vm_ip" {
 
 output "gke_cluster_endpoints" {
   description = "Map of region to GKE cluster endpoint"
-  value = {
-    for region, gke in module.gke : region => gke.cluster_endpoint
-  }
+  value = merge(
+    {
+      for region, gke in module.gke_hot : region => gke.cluster_endpoint
+    },
+    {
+      for region, gke in module.gke_cold : region => gke.cluster_endpoint
+    }
+  )
 }
 
 # Add these outputs to your main outputs.tf

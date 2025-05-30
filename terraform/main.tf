@@ -305,36 +305,10 @@ module "ids" {
   # Optional packet mirroring configuration
   packet_mirroring_tags      = []
   packet_mirroring_cidr_ranges = []
-  depends_on = [module.network, module.gke]
+  depends_on = [module.gke_hot, module.gke_cold]
 }
 
-# Create monitoring dashboards for load balancer
-module "monitoring" {
-  source = "./modules/monitoring"
-  project_id   = var.project_id
-  project_name = var.project_name
-  regions      = var.regions
-  zones        = var.zones
-  
-  # Load balancer configuration
-  load_balancer_name    = "${var.project_name}-lb"
-  backend_service_names = []
-  
-  # Dashboard configuration
-  dashboard_display_name = "${var.project_name} - Load Balancer Monitoring"
-  dashboard_refresh_rate = 300
-  
-  # Enable monitoring features
-  enable_latency_monitoring      = true
-  enable_request_count_monitoring = true
-  enable_backend_health_monitoring = false
-  
-  # Alert thresholds
-  latency_threshold_ms          = 1000
-  error_rate_threshold_percent  = 5
-  backend_health_threshold_percent = 80
-  depends_on = [module.loadbalancer]
-}
+# Create monitoring dashboards for load balance
 
 # Create DNS zone and records
 module "dns" {
@@ -357,4 +331,3 @@ module "dns" {
   count = var.domain_name != "" ? 1 : 0
   depends_on = [module.loadbalancer, module.admin]
 }
-

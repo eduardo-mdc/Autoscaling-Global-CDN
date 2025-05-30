@@ -118,7 +118,7 @@ resource "google_compute_security_policy" "policy" {
       priority = 1006
       match {
         expr {
-          expression = "evaluatePreconfiguredExpr('protocol-attack-stable')"
+          expression = "evaluatePreconfiguredExpr('sqli-stable')"
         }
       }
       description = "Protocol attack protection"
@@ -133,7 +133,7 @@ resource "google_compute_security_policy" "policy" {
       priority = 1007
       match {
         expr {
-          expression = "evaluatePreconfiguredExpr('scanners-stable')"
+          expression = "evaluatePreconfiguredExpr('scannerdetection-stable')"
         }
       }
       description = "Scanner and crawler protection"
@@ -161,6 +161,7 @@ resource "google_compute_security_policy" "policy" {
           count        = var.rate_limit_threshold
           interval_sec = 60
         }
+        ban_duration_sec = 300 # ex: 5 minutos
       }
     }
   }
