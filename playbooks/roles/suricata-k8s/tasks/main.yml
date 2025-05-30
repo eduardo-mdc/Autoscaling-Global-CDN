@@ -1,0 +1,110 @@
+---
+# Deploy Suricata IDS for streaming server
+# File: playbooks/roles/streaming-server/tasks/deploy-suricata.yml
+
+- name: Create manifests directory if it doesn't exist
+  file:
+    path: "{{ manifests_dir }}"
+    state: directory
+    mode: '0755'
+
+- name: Generate Suricata manifest
+  template:
+    src: suricata-complete-deployment.yaml.j2
+    dest: "{{ manifests_dir }}/suricata-complete-deployment.yaml"
+
+- name: Apply Suricata manifest
+  k8s:
+    state: present
+    src: "{{ manifests_dir }}/suricata-complete-deployment.yaml"
+    wait: true
+    wait_timeout: 200
+
+- name: Get Suricata status
+  k8s_info:
+    api_version: apps/v1
+    kind: DaemonSet
+    name: suricata-ids
+    namespace: monitoring
+  register: suricata_status
+
+- name: Wait for Suricata pods to be ready
+  shell: |
+    kubectl wait --for=condition=ready pod \
+      -l app=suricata-ids \
+      -n monitoring \
+      --timeout=300s
+  register: suricata_ready_result
+  ignore_errors: yes
+
+- name: Get Suricata pod count
+  shell: |
+    kubectl get pods -n monitoring -l app=suricata-ids --no-headers | wc -l
+  register: suricata_pod_count
+
+- name: Get Suricata running pods
+  shell: |
+    kubectl get pods -n monitoring -l app=suricata-ids --field-selector=status.phase=Running --no-headers | wc -l
+  register: suricata_running_pods
+
+- name: Check Suricata logs for startup
+  shell: |
+    kubectl logs -n monitoring -l app=suricata-ids -c suricata --tail=10 | grep -i "suricata.*ready\|initialization.*complete\|engine started" | head -3 || echo "No startup logs found"
+  register: suricata_startup_logs
+  ignore_errors: yes
+
+- name: Display Suricata deployment status
+  debug:
+    msg: |
+      🛡️  Suricata IDS Deployment Status:
+      
+      📊 DaemonSet Status:
+      - Desired pods: {{ suricata_status.resources[0].status.desiredNumberScheduled | default('Unknown') }}
+      - Ready pods: {{ suricata_status.resources[0].status.numberReady | default('0') }}
+      - Available pods: {{ suricata_status.resources[0].status.numberAvailable | default('0') }}
+      
+      🔍 Pod Status:
+      - Total pods: {{ suricata_pod_count.stdout }}
+      - Running pods: {{ suricata_running_pods.stdout }}
+      - Wait result: {{ 'SUCCESS' if suricata_ready_result.rc == 0 else 'TIMEOUT/FAILED' }}
+      
+      📝 Startup Logs:
+      {{ suricata_startup_logs.stdout_lines | default(['No logs available']) | join('\n') }}
+      
+      ✅ Deployment {{ 'SUCCESSFUL' if suricata_status.resources[0].status.numberReady | default(0) | int > 0 else 'PENDING' }}
+
+- name: Test Suricata functionality
+  block:
+    - name: Check if Suricata is generating logs
+      shell: |
+        kubectl exec -n monitoring -l app=suricata-ids -c suricata -- test -f /var/log/suricata/eve.json && echo "Log file exists" || echo "No log file"
+      register: suricata_log_check
+      ignore_errors: yes
+
+    - name: Check Suricata rules loaded
+      shell: |
+        kubectl logs -n monitoring -l app=suricata-ids -c suricata | grep -i "rules loaded\|rule.*loaded" | tail -1 || echo "Rules loading status unknown"
+      register: suricata_rules_check
+      ignore_errors: yes
+
+    - name: Display Suricata functionality status
+      debug:
+        msg: |
+          🔧 Suricata Functionality Check:
+          - Log file: {{ suricata_log_check.stdout | default('Check failed') }}
+          - Rules status: {{ suricata_rules_check.stdout | default('Unknown') }}
+  when: suricata_status.resources[0].status.numberReady | default(0) | int > 0
+
+- name: Suricata troubleshooting info
+  debug:
+    msg: |
+      🔧 Suricata Troubleshooting Commands:
+      
+      Check pods: kubectl get pods -n monitoring -l app=suricata-ids
+      Check logs: kubectl logs -n monitoring -l app=suricata-ids -c suricata
+      Check events: kubectl get events -n monitoring --sort-by=.metadata.creationTimestamp | tail -10
+      Check DaemonSet: kubectl describe daemonset suricata-ids -n monitoring
+      
+      Alert monitoring:
+      kubectl logs -n monitoring -l app=suricata-ids -c log-forwarder
+  when: suricata_status.resources[0].status.numberReady | default(0) | int == 0

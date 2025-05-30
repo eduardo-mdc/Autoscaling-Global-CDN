@@ -46,6 +46,7 @@
     name:
       - flask
       - werkzeug
+      - geoip2
     executable: pip3
 
 - name: Create Flask app directory
@@ -63,6 +64,7 @@
     mode: '0755'
   with_items:
     - "app.py"
+    - "cold_autoscaler.py"
     - "templates/"
 
 - name: Create systemd service file for Flask application

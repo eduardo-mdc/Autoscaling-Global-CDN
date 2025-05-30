@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cold Cluster Autoscaler - Admin Panel</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = { darkMode: 'class' }
+    </script>
+</head>
+<body class="dark:bg-gray-900 dark:text-gray-100 min-h-screen font-sans">
+<!-- Header -->
+<nav class="bg-gray-800 shadow-md">
+    <div class="max-w-7xl mx-auto px-4">
+        <div class="flex justify-between items-center py-4">
+            <div class="flex items-center space-x-4">
+                <a href="/" class="text-blue-400 hover:text-blue-300">← Back to Admin</a>
+                <h1 class="text-xl font-semibold">Cold Cluster Autoscaler</h1>
+            </div>
+            <div class="flex items-center space-x-2">
+                <div id="status-indicator" class="w-3 h-3 bg-gray-400 rounded-full"></div>
+                <span id="status-text" class="text-sm text-gray-400">Loading...</span>
+            </div>
+        </div>
+    </div>
+</nav>
+
+<div class="max-w-7xl mx-auto px-4 py-8">
+    <!-- Loading State -->
+    <div id="loading" class="text-center py-8">
+        <div class="inline-flex items-center gap-3 text-blue-400">
+            <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-400"></div>
+            <span>Loading autoscaler status...</span>
+        </div>
+    </div>
+
+    <!-- Error State -->
+    <div id="error" class="hidden bg-red-400/10 border border-red-400/20 rounded-lg p-6 text-center text-red-400 mb-8">
+        <svg class="w-12 h-12 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+        </svg>
+        <h3 class="text-lg font-semibold mb-2">Error loading data</h3>
+        <p id="error-message"></p>
+        <button onclick="loadStatus()" class="mt-4 bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg">
+            Retry
+        </button>
+    </div>
+
+    <!-- Main Content -->
+    <div id="content" class="hidden space-y-8">
+        <!-- Control Panel -->
+        <div class="bg-gray-800 rounded-lg p-6">
+            <h2 class="text-xl font-semibold mb-4">🎛️ Scaling Controls</h2>
+            <!-- Background Autoscaler Status -->
+            <div class="mb-6 p-4 bg-gray-700/50 rounded-lg">
+                <div class="flex justify-between items-center mb-3">
+                    <span class="font-medium">🤖 Background Autoscaler</span>
+                    <div class="flex items-center gap-2">
+                        <div id="bg-status-indicator" class="w-3 h-3 bg-gray-400 rounded-full"></div>
+                        <span id="bg-status-text" class="text-sm text-gray-400">Checking...</span>
+                    </div>
+                </div>
+                <div class="flex gap-2">
+                    <button onclick="controlBackgroundAutoscaler('start')" class="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-sm font-medium transition-colors">
+                        Start Auto
+                    </button>
+                    <button onclick="controlBackgroundAutoscaler('stop')" class="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-sm font-medium transition-colors">
+                        Stop Auto
+                    </button>
+                </div>
+                <p class="text-xs text-gray-400 mt-2">Automatically checks and scales every 5 minutes</p>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <button onclick="triggerScaling('auto')" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium transition-colors">
+                    🤖 Auto Scale
+                </button>
+                <button onclick="triggerScaling('up')" class="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-medium transition-colors">
+                    ⬆️ Force Scale Up
+                </button>
+                <button onclick="triggerScaling('down')" class="bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-lg font-medium transition-colors">
+                    ⬇️ Force Scale Down
+                </button>
+            </div>
+        </div>
+
+        <!-- Current Status -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <!-- Traffic Analysis -->
+            <div class="bg-gray-800 rounded-lg p-6">
+                <h2 class="text-xl font-semibold mb-4">📊 Traffic Analysis</h2>
+                <div id="traffic-stats" class="space-y-4">
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="bg-gray-700 rounded-lg p-4">
+                            <div class="text-sm text-gray-400">Total Requests</div>
+                            <div id="total-requests" class="text-2xl font-bold">-</div>
+                        </div>
+                        <div class="bg-gray-700 rounded-lg p-4">
+                            <div class="text-sm text-gray-400">Asia Traffic</div>
+                            <div id="asia-traffic" class="text-2xl font-bold">-</div>
+                        </div>
+                    </div>
+                    <div class="space-y-2">
+                        <div class="flex justify-between">
+                            <span>Asia:</span>
+                            <span id="asia-percentage">-</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span>Americas:</span>
+                            <span id="americas-percentage">-</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span>Europe:</span>
+                            <span id="europe-percentage">-</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Cluster Status -->
+            <div class="bg-gray-800 rounded-lg p-6">
+                <h2 class="text-xl font-semibold mb-4">🖥️ Cluster Status</h2>
+                <div id="cluster-status" class="space-y-4">
+                    <!-- Will be populated by JavaScript -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Scaling Decision -->
+        <div class="bg-gray-800 rounded-lg p-6">
+            <h2 class="text-xl font-semibold mb-4">🎯 Scaling Decision</h2>
+            <div id="scaling-decision" class="space-y-4">
+                <div class="flex items-center gap-3">
+                    <div id="decision-indicator" class="w-4 h-4 rounded-full bg-gray-400"></div>
+                    <span id="decision-text" class="font-medium">Analyzing...</span>
+                </div>
+                <div id="decision-reason" class="text-gray-400 text-sm"></div>
+            </div>
+        </div>
+
+        <!-- Thresholds -->
+        <div class="bg-gray-800 rounded-lg p-6">
+            <h2 class="text-xl font-semibold mb-4">⚙️ Scaling Thresholds</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <h3 class="font-medium mb-3 text-green-400">Scale Up Thresholds</h3>
+                    <div class="space-y-2 text-sm">
+                        <div class="flex justify-between">
+                            <span>Asia Requests:</span>
+                            <span id="threshold-asia-up">-</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span>Asia Percentage:</span>
+                            <span id="threshold-asia-percent-up">-</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span>Total Requests:</span>
+                            <span id="threshold-total-up">-</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span>Latency:</span>
+                            <span id="threshold-latency-up">-</span>
+                        </div>
+                    </div>
+                </div>
+                <div>
+                    <h3 class="font-medium mb-3 text-red-400">Scale Down Thresholds</h3>
+                    <div class="space-y-2 text-sm">
+                        <div class="flex justify-between">
+                            <span>Asia Requests:</span>
+                            <span id="threshold-asia-down">-</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span>Asia Percentage:</span>
+                            <span id="threshold-asia-percent-down">-</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span>Latency:</span>
+                            <span id="threshold-latency-down">-</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Recent Operations -->
+        <div class="bg-gray-800 rounded-lg p-6">
+            <h2 class="text-xl font-semibold mb-4">📝 Recent Operations</h2>
+            <div id="recent-operations" class="space-y-2">
+                <div class="text-gray-400 text-sm">No recent operations</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Command Log Modal -->
+<div id="command-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    <div class="bg-gray-800 rounded-lg max-w-4xl w-full mx-4 max-h-[80vh] flex flex-col">
+        <div class="flex justify-between items-center p-6 border-b border-gray-700">
+            <h3 class="text-xl font-semibold">🔧 Command Execution Log</h3>
+            <button onclick="closeCommandModal()" class="text-gray-400 hover:text-white">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                </svg>
+            </button>
+        </div>
+        <div class="p-6 flex-1 overflow-auto">
+            <div id="command-log" class="bg-gray-900 rounded-lg p-4 font-mono text-sm text-green-400 whitespace-pre-wrap overflow-auto max-h-96">
+                Preparing to execute commands...
+            </div>
+            <div class="mt-4 flex justify-between items-center">
+                <div id="command-status" class="flex items-center gap-2">
+                    <div id="command-spinner" class="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-400"></div>
+                    <span class="text-sm text-gray-400">Executing...</span>
+                </div>
+                <button onclick="closeCommandModal()" class="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg text-sm">
+                    Close
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let statusData = null;
+    let operationHistory = [];
+
+    async function loadStatus() {
+        document.getElementById('loading').style.display = 'block';
+        document.getElementById('error').style.display = 'none';
+        document.getElementById('content').style.display = 'none';
+
+        try {
+            const response = await fetch('/api/autoscaler/status');
+            const data = await response.json();
+
+            if (data.status === 'success') {
+                statusData = data;
+                updateUI(data);
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('content').style.display = 'block';
+                updateStatusIndicator('online', 'Online');
+
+                // Also load background autoscaler status
+                loadBackgroundStatus();
+            } else {
+                throw new Error(data.error || 'Unknown error');
+            }
+        } catch (error) {
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('error').style.display = 'block';
+            document.getElementById('error-message').textContent = error.message;
+            updateStatusIndicator('error', 'Error');
+        }
+    }
+
+    async function loadBackgroundStatus() {
+        try {
+            const response = await fetch('/api/autoscaler/background/status');
+            const data = await response.json();
+
+            const indicator = document.getElementById('bg-status-indicator');
+            const statusText = document.getElementById('bg-status-text');
+
+            if (data.running) {
+                indicator.className = 'w-3 h-3 bg-green-400 rounded-full animate-pulse';
+                statusText.textContent = 'Running (5min intervals)';
+            } else {
+                indicator.className = 'w-3 h-3 bg-gray-400 rounded-full';
+                statusText.textContent = 'Stopped';
+            }
+        } catch (error) {
+            console.error('Failed to load background status:', error);
+        }
+    }
+
+    async function controlBackgroundAutoscaler(action) {
+        try {
+            const response = await fetch('/api/autoscaler/background', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ action: action })
+            });
+
+            const data = await response.json();
+
+            if (data.status === 'success') {
+                loadBackgroundStatus();
+                addStatusMessage(`Background autoscaler ${action}ed`, 'success');
+            } else {
+                addStatusMessage(`Failed to ${action} background autoscaler: ${data.error}`, 'error');
+            }
+        } catch (error) {
+            addStatusMessage(`Error controlling background autoscaler: ${error.message}`, 'error');
+        }
+    }
+
+    function updateUI(data) {
+        // Update traffic stats
+        const traffic = data.traffic_analysis;
+        document.getElementById('total-requests').textContent = traffic.total_requests;
+        document.getElementById('asia-traffic').textContent = traffic.regional_traffic.asia;
+        document.getElementById('asia-percentage').textContent = traffic.regional_percentages.asia.toFixed(1) + '%';
+        document.getElementById('americas-percentage').textContent = traffic.regional_percentages.americas.toFixed(1) + '%';
+        document.getElementById('europe-percentage').textContent = traffic.regional_percentages.europe.toFixed(1) + '%';
+
+        // Update cluster status
+        const clusterContainer = document.getElementById('cluster-status');
+        clusterContainer.innerHTML = '';
+
+        data.regions.cold.forEach(region => {
+            const cluster = data.clusters[region];
+            const div = document.createElement('div');
+            div.className = 'bg-gray-700 rounded-lg p-4';
+
+            const status = cluster ? cluster.status : 'UNKNOWN';
+            const statusColor = status === 'RUNNING' ? 'text-green-400' : 'text-red-400';
+
+            div.innerHTML = `
+                    <div class="flex justify-between items-center">
+                        <span class="font-medium">${region}</span>
+                        <span class="${statusColor}">${status}</span>
+                    </div>
+                    <div class="text-sm text-gray-400 mt-1">
+                        ${cluster ? cluster.node_pools.length : 0} node pools
+                    </div>
+                `;
+            clusterContainer.appendChild(div);
+        });
+
+        // Update scaling decision
+        const decision = data.scale_decision;
+        const decisionIndicator = document.getElementById('decision-indicator');
+        const decisionText = document.getElementById('decision-text');
+        const decisionReason = document.getElementById('decision-reason');
+
+        if (decision.should_scale) {
+            if (decision.target_nodes > 0) {
+                decisionIndicator.className = 'w-4 h-4 rounded-full bg-green-400';
+                decisionText.textContent = `Scale UP to ${decision.target_nodes} nodes`;
+            } else {
+                decisionIndicator.className = 'w-4 h-4 rounded-full bg-red-400';
+                decisionText.textContent = 'Scale DOWN to 0 nodes';
+            }
+        } else {
+            decisionIndicator.className = 'w-4 h-4 rounded-full bg-blue-400';
+            decisionText.textContent = 'No scaling needed';
+        }
+        decisionReason.textContent = decision.reason;
+
+        // Update thresholds
+        const thresholds = data.thresholds;
+        document.getElementById('threshold-asia-up').textContent = thresholds.asia_requests_upper;
+        document.getElementById('threshold-asia-percent-up').textContent = thresholds.asia_percentage_upper + '%';
+        document.getElementById('threshold-total-up').textContent = thresholds.total_requests_upper;
+        document.getElementById('threshold-latency-up').textContent = thresholds.latency_upper_ms + 'ms';
+        document.getElementById('threshold-asia-down').textContent = thresholds.asia_requests_lower;
+        document.getElementById('threshold-asia-percent-down').textContent = thresholds.asia_percentage_lower + '%';
+        document.getElementById('threshold-latency-down').textContent = thresholds.latency_lower_ms + 'ms';
+    }
+
+    function updateStatusIndicator(status, text) {
+        const indicator = document.getElementById('status-indicator');
+        const statusText = document.getElementById('status-text');
+
+        indicator.className = 'w-3 h-3 rounded-full ' +
+            (status === 'online' ? 'bg-green-400' :
+                status === 'error' ? 'bg-red-400' : 'bg-gray-400');
+        statusText.textContent = text;
+    }
+
+    async function triggerScaling(action) {
+        showCommandModal(action);
+
+        const logElement = document.getElementById('command-log');
+        const statusElement = document.getElementById('command-status');
+
+        // Clear previous log
+        logElement.textContent = '';
+
+        // Log initial action
+        appendToLog(`🚀 Starting ${action.toUpperCase()} scaling operation...`);
+        appendToLog(`Timestamp: ${new Date().toLocaleString()}`);
+        appendToLog(`Action: ${action}`);
+        appendToLog('');
+
+        try {
+            appendToLog('📊 Analyzing current traffic and cluster status...');
+            appendToLog('');
+
+            const response = await fetch('/api/autoscaler/scale', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    action: action,
+                    target_nodes: 2
+                })
+            });
+
+            const data = await response.json();
+
+            if (data.status === 'success') {
+                appendToLog('✅ Scaling operation completed successfully!');
+                appendToLog('');
+                appendToLog('📋 Results Summary:');
+
+                data.results.forEach((result, index) => {
+                    appendToLog(`\n--- Region ${index + 1}: ${result.region} ---`);
+                    appendToLog(`Status: ${result.status}`);
+                    appendToLog(`Cluster: ${result.cluster_name || 'N/A'}`);
+                    appendToLog(`Node Pool: ${result.node_pool_name || 'N/A'}`);
+
+                    if (result.current_min !== undefined) {
+                        appendToLog(`Current Min Nodes: ${result.current_min}`);
+                        appendToLog(`Current Max Nodes: ${result.current_max}`);
+                        appendToLog(`Target Min Nodes: ${result.target_min}`);
+                        appendToLog(`Target Max Nodes: ${result.target_max}`);
+                    }
+
+                    if (result.message) {
+                        appendToLog(`Message: ${result.message}`);
+                    }
+
+                    if (result.error) {
+                        appendToLog(`❌ Error: ${result.error}`);
+                    }
+
+                    // Simulate gcloud commands that would be executed
+                    if (result.status === 'autoscaling_updated' || result.status === 'simulated') {
+                        appendToLog('');
+                        appendToLog('🔧 Executed commands:');
+                        if (action === 'up') {
+                            appendToLog(`gcloud container clusters update ${result.cluster_name || 'cluster'} \\`);
+                            appendToLog(`  --enable-autoscaling \\`);
+                            appendToLog(`  --node-pool ${result.node_pool_name || 'default-pool'} \\`);
+                            appendToLog(`  --total-min-nodes 0 \\`);
+                            appendToLog(`  --total-max-nodes 2 \\`);
+                            appendToLog(`  --region ${result.region} \\`);
+                            appendToLog(`  --project uporto-cd \\`);
+                            appendToLog(`  --quiet`);
+                        } else if (action === 'down') {
+                            appendToLog(`gcloud container clusters update ${result.cluster_name || 'cluster'} \\`);
+                            appendToLog(`  --enable-autoscaling \\`);
+                            appendToLog(`  --node-pool ${result.node_pool_name || 'default-pool'} \\`);
+                            appendToLog(`  --total-min-nodes 0 \\`);
+                            appendToLog(`  --total-max-nodes 0 \\`);
+                            appendToLog(`  --region ${result.region} \\`);
+                            appendToLog(`  --project uporto-cd \\`);
+                            appendToLog(`  --quiet`);
+                        }
+                    }
+                });
+
+                appendToLog('');
+                appendToLog('🔄 Refreshing cluster status in 2 seconds...');
+
+                // Add to operation history
+                const operation = {
+                    timestamp: new Date().toLocaleString(),
+                    action: action,
+                    results: data.results
+                };
+                operationHistory.unshift(operation);
+                updateOperationHistory();
+
+                // Update status indicator
+                statusElement.innerHTML = `
+                        <div class="flex items-center gap-2">
+                            <div class="w-4 h-4 rounded-full bg-green-400"></div>
+                            <span class="text-sm text-green-400">Completed successfully</span>
+                        </div>
+                    `;
+
+                // Reload status after a delay
+                setTimeout(loadStatus, 2000);
+
+            } else {
+                throw new Error(data.error || 'Scaling operation failed');
+            }
+        } catch (error) {
+            appendToLog(`❌ ERROR: ${error.message}`);
+            appendToLog('');
+            appendToLog('🔍 Troubleshooting tips:');
+            appendToLog('- Check if gcloud is authenticated');
+            appendToLog('- Verify cluster exists and is accessible');
+            appendToLog('- Ensure proper IAM permissions');
+            appendToLog('- Check network connectivity');
+
+            statusElement.innerHTML = `
+                    <div class="flex items-center gap-2">
+                        <div class="w-4 h-4 rounded-full bg-red-400"></div>
+                        <span class="text-sm text-red-400">Failed</span>
+                    </div>
+                `;
+        }
+    }
+
+    function showCommandModal(action) {
+        document.getElementById('command-modal').classList.remove('hidden');
+
+        // Set initial status
+        const statusElement = document.getElementById('command-status');
+        statusElement.innerHTML = `
+                <div class="flex items-center gap-2">
+                    <div id="command-spinner" class="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-400"></div>
+                    <span class="text-sm text-gray-400">Executing ${action} operation...</span>
+                </div>
+            `;
+    }
+
+    function closeCommandModal() {
+        document.getElementById('command-modal').classList.add('hidden');
+    }
+
+    function appendToLog(message) {
+        const logElement = document.getElementById('command-log');
+        logElement.textContent += message + '\n';
+        logElement.scrollTop = logElement.scrollHeight;
+    }
+
+    function updateOperationHistory() {
+        const container = document.getElementById('recent-operations');
+        container.innerHTML = '';
+
+        if (operationHistory.length === 0) {
+            container.innerHTML = '<div class="text-gray-400 text-sm">No recent operations</div>';
+            return;
+        }
+
+        operationHistory.slice(0, 5).forEach(op => {
+            const div = document.createElement('div');
+            div.className = 'bg-gray-700 rounded p-3 text-sm';
+
+            const successCount = op.results.filter(r => r.status === 'autoscaling_updated' || r.status === 'no_change').length;
+            const statusColor = successCount === op.results.length ? 'text-green-400' : 'text-red-400';
+
+            div.innerHTML = `
+                    <div class="flex justify-between items-center">
+                        <span class="font-medium">${op.action.toUpperCase()}</span>
+                        <span class="${statusColor}">${successCount}/${op.results.length} success</span>
+                    </div>
+                    <div class="text-gray-400">${op.timestamp}</div>
+                `;
+            container.appendChild(div);
+        });
+    }
+
+    // Auto-refresh every 5 minutes (300000 ms)
+    setInterval(loadStatus, 300000);
+
+    // Initial load
+    loadStatus();
+</script>
+</body>
+</html>

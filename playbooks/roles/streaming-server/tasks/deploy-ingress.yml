@@ -13,6 +13,18 @@
   set_fact:
     is_config_cluster: "{{ bastion_region == regions[0] }}"
 
+- name: Generate OAuth2 Proxy deployment manifest
+  template:
+    src: oauth2/deployment.yaml.j2
+    dest: "{{ manifests_dir }}/oauth2-deployment.yaml"
+
+- name: Apply OAuth2 Proxy deployment manifest
+  k8s :
+    state : present
+    src : "{{ manifests_dir }}/oauth2-deployment.yaml"
+    wait : true
+    wait_timeout : 300
+
 - name: Create MCI manifests directory
   file:
     path: "{{ manifests_dir }}/mci"

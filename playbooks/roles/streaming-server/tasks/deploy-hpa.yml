@@ -1,0 +1,75 @@
+---
+# Deploy HPA for streaming server
+# File: playbooks/roles/streaming-server/tasks/deploy-hpa.yml
+
+- name: Create manifests directory if it doesn't exist
+  file:
+    path: "{{ manifests_dir }}"
+    state: directory
+    mode: '0755'
+
+- name: Generate HPA manifest
+  template:
+    src: streaming-hpa.yaml.j2
+    dest: "{{ manifests_dir }}/streaming-hpa.yaml"
+
+- name: Apply HPA manifest
+  k8s:
+    state: present
+    src: "{{ manifests_dir }}/streaming-hpa.yaml"
+    wait: true
+    wait_timeout: 60
+
+- name: Wait for HPA to initialize
+  shell: |
+    kubectl wait --for=condition=AbleToScale hpa/{{ app_name }}-hpa \
+      -n {{ app_namespace }} \
+      --timeout=120s
+  register: hpa_ready
+  ignore_errors: yes
+
+- name: Get HPA status
+  k8s_info:
+    api_version: autoscaling/v2
+    kind: HorizontalPodAutoscaler
+    name: "{{ app_name }}-hpa"
+    namespace: "{{ app_namespace }}"
+  register: hpa_status
+
+- name: Display HPA status
+  debug:
+    msg: |
+      🎯 HPA Deployment Status:
+      
+      Name: {{ app_name }}-hpa
+      Namespace: {{ app_namespace }}
+      {% if hpa_status.resources %}
+      Min Replicas: {{ hpa_status.resources[0].spec.minReplicas }}
+      Max Replicas: {{ hpa_status.resources[0].spec.maxReplicas }}
+      Current Replicas: {{ hpa_status.resources[0].status.currentReplicas | default('0') }}
+      Desired Replicas: {{ hpa_status.resources[0].status.desiredReplicas | default('N/A') }}
+      
+      Metrics:
+      {% for metric in hpa_status.resources[0].spec.metrics %}
+      - {{ metric.resource.name }}: {{ metric.resource.target.averageUtilization }}%
+      {% endfor %}
+      
+      Status: {{ 'Ready' if hpa_ready.rc == 0 else 'Initializing' }}
+      {% else %}
+      Status: ❌ Failed to create
+      {% endif %}
+
+- name: Verify HPA can read metrics
+  shell: |
+    kubectl describe hpa {{ app_name }}-hpa -n {{ app_namespace }}
+  register: hpa_describe
+  ignore_errors: yes
+
+- name: Show HPA metrics availability
+  debug:
+    msg: |
+      📊 HPA Metrics Status:
+      {{ hpa_describe.stdout_lines | select('match', '.*cpu.*|.*memory.*') | list | join('\n') }}
+      
+      ✅ HPA deployed and monitoring resource utilization
+      🔄 Scaling range: {{ min_replicas | default('1') }} - {{ max_replicas | default('10') }} replicas

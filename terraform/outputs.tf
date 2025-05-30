@@ -251,7 +251,3 @@ output "fleet_summary" {
     mci_global_ip_name   = module.fleet.mci_global_ip_name
   }
 }
-
-# Remove or comment out old loadbalancer outputs:
-# output "load_balancer_ip" { ... }
-# output "domain_configuration" { ... }

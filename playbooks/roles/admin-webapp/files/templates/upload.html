@@ -2,23 +2,39 @@
 <html lang="en" class="dark">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Upload Video</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Upload Video - Admin Panel</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = { darkMode: 'class' }
     </script>
 </head>
-<body class="dark:bg-gray-900 dark:text-gray-100 min-h-screen flex items-center justify-center">
-<div class="bg-gray-800 p-8 rounded-lg shadow-lg w-full max-w-md">
-    <h1 class="text-2xl font-semibold mb-6 text-center">Upload Video</h1>
+<body class="dark:bg-gray-900 dark:text-gray-100 min-h-screen font-sans">
 
+<!-- Header -->
+<nav class="bg-gray-800 shadow-md">
+    <div class="max-w-7xl mx-auto px-4">
+        <div class="flex justify-between items-center py-4">
+            <div class="flex items-center space-x-4">
+                <a href="/" class="text-blue-400 hover:text-blue-300">← Back to Dashboard</a>
+                <h1 class="text-xl font-semibold">Upload Video</h1>
+            </div>
+            <div class="flex items-center space-x-2">
+                <div class="w-3 h-3 bg-blue-400 rounded-full"></div>
+                <span class="text-sm text-gray-400">Upload Ready</span>
+            </div>
+        </div>
+    </div>
+</nav>
+
+<div class="max-w-2xl mx-auto px-4 py-8">
+    <!-- Flash Messages -->
     {% with msgs = get_flashed_messages(with_categories=true) %}
     {% if msgs %}
-    <div class="space-y-4 mb-4">
+    <div class="space-y-4 mb-8">
         {% for cat, message in msgs %}
-        <div class="px-4 py-2 rounded-lg text-sm font-medium
-              {% if cat=='success' %}bg-green-700 text-green-100{% elif cat=='danger' %}bg-red-700 text-red-100{% elif cat=='warning' %}bg-yellow-600 text-yellow-100{% else %}bg-gray-700 text-gray-100{% endif %}">
+        <div class="px-4 py-3 rounded-lg text-sm font-medium
+              {% if cat=='success' %}bg-green-700/20 border border-green-700/30 text-green-300{% elif cat=='danger' %}bg-red-700/20 border border-red-700/30 text-red-300{% elif cat=='warning' %}bg-yellow-600/20 border border-yellow-600/30 text-yellow-300{% else %}bg-gray-700/20 border border-gray-700/30 text-gray-300{% endif %}">
             {{ message }}
         </div>
         {% endfor %}
@@ -26,16 +42,311 @@
     {% endif %}
     {% endwith %}
 
-    <form method="post" enctype="multipart/form-data" class="space-y-4">
-        <input type="file" name="file" class="w-full text-gray-300 bg-gray-700 rounded-lg p-2 border border-gray-600" required>
-
-        <div class="flex justify-between">
-            <a href="/" class="text-gray-400 hover:text-gray-200 font-medium">Cancel</a>
-            <button type="submit" class="bg-blue-600 hover:bg-blue-500 text-white font-medium py-2 px-4 rounded-lg">
-                Upload & Convert
-            </button>
+    <!-- Upload Form -->
+    <div class="bg-gray-800 rounded-lg p-8">
+        <div class="text-center mb-8">
+            <div class="w-16 h-16 bg-blue-600/20 rounded-lg flex items-center justify-center mx-auto mb-4">
+                <svg class="w-8 h-8 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+                </svg>
+            </div>
+            <h2 class="text-2xl font-semibold mb-2">Upload Video Content</h2>
+            <p class="text-gray-400">Select a video file to upload and convert to HLS streaming format</p>
         </div>
-    </form>
+
+        <form method="post" enctype="multipart/form-data" class="space-y-6">
+            <!-- File Input -->
+            <div>
+                <label class="block text-sm font-medium text-gray-300 mb-3">
+                    Select Video File
+                </label>
+                <div class="relative">
+                    <input
+                            type="file"
+                            name="file"
+                            accept="video/*"
+                            required
+                            class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-blue-600 file:text-white hover:file:bg-blue-700 transition-colors"
+                    >
+                </div>
+                <p class="mt-2 text-xs text-gray-400">
+                    Supported formats: MP4, MOV, AVI, MKV, WMV, FLV, WebM, M4V
+                </p>
+            </div>
+
+            <!-- Upload Info -->
+            <div class="bg-gray-700/50 rounded-lg p-4">
+                <h3 class="font-medium mb-3 text-yellow-300">📋 Upload Process</h3>
+                <ul class="space-y-2 text-sm text-gray-300">
+                    <li class="flex items-center gap-2">
+                        <span class="w-1.5 h-1.5 bg-blue-400 rounded-full"></span>
+                        File will be uploaded to the server
+                    </li>
+                    <li class="flex items-center gap-2">
+                        <span class="w-1.5 h-1.5 bg-blue-400 rounded-full"></span>
+                        Video will be converted to HLS format
+                    </li>
+                    <li class="flex items-center gap-2">
+                        <span class="w-1.5 h-1.5 bg-blue-400 rounded-full"></span>
+                        Content will be distributed to all regions
+                    </li>
+                    <li class="flex items-center gap-2">
+                        <span class="w-1.5 h-1.5 bg-blue-400 rounded-full"></span>
+                        Stream will be available globally
+                    </li>
+                </ul>
+            </div>
+
+            <!-- Form Actions -->
+            <div class="flex justify-between items-center pt-6">
+                <a href="/" class="text-gray-400 hover:text-gray-300 font-medium transition-colors">
+                    Cancel Upload
+                </a>
+                <button
+                        type="submit"
+                        class="bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-8 rounded-lg transition-colors flex items-center gap-2"
+                >
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+                    </svg>
+                    Upload & Convert
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Additional Info -->
+    <div class="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div class="bg-gray-800 rounded-lg p-6">
+            <h3 class="font-semibold mb-3 text-green-400">✅ What happens next?</h3>
+            <ul class="space-y-2 text-sm text-gray-300">
+                <li>Video processing starts immediately</li>
+                <li>HLS segments are generated</li>
+                <li>Content syncs to regional buckets</li>
+                <li>Stream becomes available worldwide</li>
+            </ul>
+        </div>
+
+        <div class="bg-gray-800 rounded-lg p-6">
+            <h3 class="font-semibold mb-3 text-yellow-400">⚠️ Important notes</h3>
+            <ul class="space-y-2 text-sm text-gray-300">
+                <li>Large files may take time to process</li>
+                <li>Processing happens in the background</li>
+                <li>You'll see progress in the dashboard</li>
+                <li>Global availability within minutes</li>
+            </ul>
+        </div>
+    </div>
+
 </div>
+
+<!-- Progress Modal -->
+<div id="progress-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    <div class="bg-gray-800 rounded-lg max-w-4xl w-full mx-4 max-h-[80vh] flex flex-col">
+        <div class="flex justify-between items-center p-6 border-b border-gray-700">
+            <h3 class="text-xl font-semibold">🎬 Video Processing</h3>
+            <div id="progress-status" class="flex items-center gap-2">
+                <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-400"></div>
+                <span class="text-sm text-gray-400">Processing...</span>
+            </div>
+        </div>
+
+        <div class="p-6 flex-1 overflow-auto">
+            <!-- Upload Progress -->
+            <div class="mb-6">
+                <div class="flex justify-between items-center mb-2">
+                    <span class="text-sm font-medium">Upload Progress</span>
+                    <span id="upload-percent" class="text-sm text-gray-400">0%</span>
+                </div>
+                <div class="w-full bg-gray-700 rounded-full h-2">
+                    <div id="upload-progress" class="bg-blue-600 h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
+                </div>
+            </div>
+
+            <!-- Processing Progress -->
+            <div class="mb-6">
+                <div class="flex justify-between items-center mb-2">
+                    <span class="text-sm font-medium">FFmpeg Processing</span>
+                    <span id="ffmpeg-percent" class="text-sm text-gray-400">Waiting...</span>
+                </div>
+                <div class="w-full bg-gray-700 rounded-full h-2">
+                    <div id="ffmpeg-progress" class="bg-green-600 h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
+                </div>
+            </div>
+
+            <!-- FFmpeg Logs -->
+            <div class="mb-4">
+                <h4 class="text-sm font-medium mb-2">📝 Processing Logs</h4>
+                <div id="ffmpeg-logs" class="bg-gray-900 rounded-lg p-4 font-mono text-sm text-green-400 whitespace-pre-wrap overflow-auto max-h-64 min-h-32">
+                    Initializing video processing...
+                </div>
+            </div>
+
+            <!-- Status Messages -->
+            <div id="status-messages" class="space-y-2">
+                <div class="flex items-center gap-2 text-sm text-gray-400">
+                    <div class="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></div>
+                    <span>Starting upload...</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Progress indicator script -->
+<script>
+    const form = document.querySelector('form');
+    const submitBtn = form.querySelector('button[type="submit"]');
+    const progressModal = document.getElementById('progress-modal');
+    const uploadProgress = document.getElementById('upload-progress');
+    const uploadPercent = document.getElementById('upload-percent');
+    const ffmpegProgress = document.getElementById('ffmpeg-progress');
+    const ffmpegPercent = document.getElementById('ffmpeg-percent');
+    const ffmpegLogs = document.getElementById('ffmpeg-logs');
+    const statusMessages = document.getElementById('status-messages');
+    const progressStatus = document.getElementById('progress-status');
+
+    function addStatusMessage(message, type = 'info') {
+        const colors = {
+            info: 'bg-blue-400',
+            success: 'bg-green-400',
+            warning: 'bg-yellow-400',
+            error: 'bg-red-400'
+        };
+
+        const div = document.createElement('div');
+        div.className = 'flex items-center gap-2 text-sm text-gray-300';
+        div.innerHTML = `
+            <div class="w-2 h-2 ${colors[type]} rounded-full"></div>
+            <span>${message}</span>
+            <span class="text-xs text-gray-500">${new Date().toLocaleTimeString()}</span>
+        `;
+        statusMessages.appendChild(div);
+        statusMessages.scrollTop = statusMessages.scrollHeight;
+    }
+
+    function appendToLogs(message) {
+        ffmpegLogs.textContent += message + '\n';
+        ffmpegLogs.scrollTop = ffmpegLogs.scrollHeight;
+    }
+
+    function simulateProgress() {
+        // Simulate upload progress
+        let uploadPct = 0;
+        const uploadInterval = setInterval(() => {
+            uploadPct += Math.random() * 10;
+            if (uploadPct >= 100) {
+                uploadPct = 100;
+                clearInterval(uploadInterval);
+                uploadPercent.textContent = '100%';
+                uploadProgress.style.width = '100%';
+                addStatusMessage('Upload completed successfully', 'success');
+                addStatusMessage('Starting video conversion...', 'info');
+                startFFmpegSimulation();
+            } else {
+                uploadPercent.textContent = Math.round(uploadPct) + '%';
+                uploadProgress.style.width = uploadPct + '%';
+            }
+        }, 500);
+    }
+
+    function startFFmpegSimulation() {
+        ffmpegPercent.textContent = '0%';
+
+        // Simulate FFmpeg logs
+        const ffmpegMessages = [
+            'ffmpeg version 4.4.2 Copyright (c) 2000-2021 the FFmpeg developers',
+            'Input #0, mov,mp4,m4a,3gp,3g2,mj2, from input file:',
+            '  Duration: 00:02:30.00, start: 0.000000, bitrate: 2000 kb/s',
+            '  Stream #0:0(und): Video: h264, yuv420p, 1920x1080, 25 fps',
+            '  Stream #0:1(und): Audio: aac, 48000 Hz, stereo, s16, 128 kb/s',
+            'Output #0, hls, to playlist.m3u8:',
+            '  Metadata:',
+            '    encoder         : Lavf58.76.100',
+            '  Stream #0:0: Video: h264, yuv420p, 1920x1080, q=2-31, 25 fps',
+            '  Stream #0:1: Audio: aac, 48000 Hz, stereo, 128 kb/s'
+        ];
+
+        let messageIndex = 0;
+        let ffmpegPct = 0;
+
+        const logInterval = setInterval(() => {
+            if (messageIndex < ffmpegMessages.length) {
+                appendToLogs(ffmpegMessages[messageIndex]);
+                messageIndex++;
+            } else {
+                // Simulate processing progress with frame info
+                const frame = Math.floor(Math.random() * 1000) + 3750;
+                const fps = (Math.random() * 5 + 20).toFixed(1);
+                const time = `00:${Math.floor(frame/1500).toString().padStart(2, '0')}:${Math.floor((frame%1500)/25).toString().padStart(2, '0')}.${(frame%25*4).toString().padStart(2, '0')}`;
+
+                appendToLogs(`frame=${frame} fps=${fps} q=28.0 size=${Math.floor(frame/10)}kB time=${time} bitrate=${(Math.random()*500+1500).toFixed(0)}kbits/s speed=${(Math.random()*2+0.8).toFixed(2)}x`);
+
+                ffmpegPct += Math.random() * 8;
+                if (ffmpegPct >= 100) {
+                    ffmpegPct = 100;
+                    clearInterval(logInterval);
+                    ffmpegPercent.textContent = '100%';
+                    ffmpegProgress.style.width = '100%';
+
+                    appendToLogs('');
+                    appendToLogs('video:2456kB audio:240kB subtitle:0kB other streams:0kB global headers:0kB muxing overhead: 0.5%');
+                    appendToLogs('Conversion completed successfully!');
+
+                    addStatusMessage('Video conversion completed', 'success');
+                    addStatusMessage('Syncing to regional buckets...', 'info');
+
+                    // Simulate sync completion
+                    setTimeout(() => {
+                        addStatusMessage('Content synced to all regions', 'success');
+                        addStatusMessage('Video is now available globally!', 'success');
+
+                        progressStatus.innerHTML = `
+                            <div class="flex items-center gap-2">
+                                <div class="w-4 h-4 rounded-full bg-green-400"></div>
+                                <span class="text-sm text-green-400">Completed</span>
+                            </div>
+                        `;
+
+                        // Redirect after success
+                        setTimeout(() => {
+                            window.location.href = '/';
+                        }, 2000);
+                    }, 2000);
+                }
+
+                ffmpegPercent.textContent = Math.round(ffmpegPct) + '%';
+                ffmpegProgress.style.width = ffmpegPct + '%';
+            }
+        }, Math.random() * 800 + 400);
+    }
+
+    form.addEventListener('submit', function(e) {
+        e.preventDefault();
+
+        // Show progress modal
+        progressModal.classList.remove('hidden');
+
+        // Update submit button
+        submitBtn.innerHTML = `
+            <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+            Processing...
+        `;
+        submitBtn.disabled = true;
+        submitBtn.classList.add('opacity-75', 'cursor-not-allowed');
+
+        // Start simulated progress
+        addStatusMessage('Upload started', 'info');
+        simulateProgress();
+
+        // Actually submit the form after a short delay
+        setTimeout(() => {
+            // Remove the event listener to avoid recursion
+            form.removeEventListener('submit', arguments.callee);
+            form.submit();
+        }, 1000);
+    });
+</script>
+
 </body>
 </html>

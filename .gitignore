@@ -47,7 +47,7 @@ cold-autoscaler-2*
 /context/context_20250528_001636/deploy_monitoring-_-playbooks-roles-streaming-server-tasks.yml
 /playbooks/deployment.log
 /context/context_20250528_001636/deployment-_-playbooks.log
-/scripts/geoip_data/GeoLite2-City.mmdb
+/scripts/predictive-scaler/geoip_data/GeoLite2-City.mmdb
 /context/context_20250528_001636/hls-streaming-service.yaml-_-playbooks-roles-streaming-server-templates.j2
 /playbooks/inventory/hosts.ini
 /context/context_20250528_001636/hosts-_-playbooks-inventory.ini

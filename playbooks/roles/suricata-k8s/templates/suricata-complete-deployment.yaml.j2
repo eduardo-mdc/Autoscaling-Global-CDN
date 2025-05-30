@@ -1,0 +1,580 @@
+---
+# Namespace for monitoring
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+  labels:
+    name: monitoring
+    security: enabled
+
+---
+# ServiceAccount for Suricata IDS
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: suricata-ids
+  namespace: monitoring
+  labels:
+    app: suricata-ids
+    component: security
+
+---
+# ClusterRole for Suricata IDS
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: suricata-ids
+rules:
+  - apiGroups: [""]
+    resources: ["nodes", "pods", "services"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["networkpolicies"]
+    verbs: ["get", "list", "watch"]
+
+---
+# ClusterRoleBinding for Suricata IDS
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: suricata-ids
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: suricata-ids
+subjects:
+  - kind: ServiceAccount
+    name: suricata-ids
+    namespace: monitoring
+
+---
+# ConfigMap for Suricata configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: suricata-config
+  namespace: monitoring
+  labels:
+    app: suricata-ids
+data:
+  suricata.yaml: |
+    vars:
+      address-groups:
+        # Your GKE cluster networks + admin network
+        HOME_NET: "[10.100.0.0/16,10.101.0.0/16,10.102.0.0/16,10.250.0.0/24,172.16.1.0/28,172.16.2.0/28,172.16.3.0/28]"
+        EXTERNAL_NET: "!$HOME_NET"
+        HTTP_SERVERS: "$HOME_NET"
+        DNS_SERVERS: "$HOME_NET"
+
+      port-groups:
+        HTTP_PORTS: "80"
+        HTTPS_PORTS: "443"
+        DNS_PORTS: "53"
+
+    default-log-dir: /var/log/suricata/
+
+    stats:
+      enabled: yes
+      interval: 30
+
+    outputs:
+      - console:
+          enabled: no
+      - file:
+          enabled: yes
+          level: info
+          filename: /var/log/suricata/suricata.log
+      - syslog:
+          enabled: no
+      - fast:
+          enabled: yes
+          filename: /var/log/suricata/fast.log
+          append: yes
+      - eve-log:
+          enabled: yes
+          filetype: regular
+          filename: /var/log/suricata/eve.json
+          community-id: true
+          community-id-seed: 0
+          types:
+            - alert:
+                tagged-packets: yes
+                xff:
+                  enabled: yes
+                  mode: extra-data
+                  deployment: reverse
+                  header: X-Forwarded-For
+            - anomaly:
+                enabled: yes
+                types:
+                  decode: yes
+                  stream: yes
+                  applayer: yes
+            - http:
+                extended: yes
+                dump-all-headers: both
+            - dns:
+                query: yes
+                answer: yes
+            - tls:
+                extended: yes
+            - files:
+                force-magic: no
+            - drop:
+                alerts: yes
+            - smtp:
+            - flow
+            - netflow
+
+    app-layer:
+      protocols:
+        http:
+          enabled: yes
+          libhtp:
+            default-config:
+              personality: IDS
+              request-body-limit: 100kb
+              response-body-limit: 100kb
+              request-body-minimal-inspect-size: 32kb
+              request-body-inspect-window: 4kb
+              response-body-minimal-inspect-size: 40kb
+              response-body-inspect-window: 16kb
+              response-body-decompress-layer-limit: 2
+              http-body-inline: auto
+              swf-decompression:
+                enabled: yes
+                type: both
+                compress-depth: 100kb
+                decompress-depth: 100kb
+              double-decode-path: no
+              double-decode-query: no
+        tls:
+          enabled: yes
+          detection-ports:
+            dp: 443
+        dns:
+          tcp:
+            enabled: yes
+            detection-ports:
+              dp: 53
+          udp:
+            enabled: yes
+            detection-ports:
+              dp: 53
+
+    pcap:
+      - interface: eth0
+        cluster-id: 99
+        cluster-type: cluster_flow
+        defrag: yes
+        use-mmap: yes
+        mmap-locked: yes
+        tpacket-v3: yes
+        ring-size: 2048
+        block-size: 32768
+      - interface: default
+        threads: auto
+        promisc: yes
+        snaplen: 1518
+
+    detect-engine:
+      - profile: medium
+      - custom-values:
+          toclient-groups: 3
+          toserver-groups: 25
+      - sgh-mpm-context: auto
+      - inspection-recursion-limit: 3000
+      - prefilter-engines:
+          - fast-pattern
+          - single-pattern
+
+    threading:
+      set-cpu-affinity: no
+      cpu-affinity:
+        - management-cpu-set:
+            cpu: [ 0 ]
+        - receive-cpu-set:
+            cpu: [ 0 ]
+        - worker-cpu-set:
+            cpu: [ "all" ]
+            mode: "exclusive"
+            prio:
+              low: [ 0 ]
+              medium: [ "1-2" ]
+              high: [ 3 ]
+              default: "medium"
+
+    profiling:
+      rules:
+        enabled: yes
+        filename: /var/log/suricata/rule_perf.log
+        append: yes
+        sort: avgticks
+        limit: 100
+      keywords:
+        enabled: yes
+        filename: /var/log/suricata/keyword_perf.log
+        append: yes
+      rulegroups:
+        enabled: yes
+        filename: /var/log/suricata/rule_group_perf.log
+        append: yes
+      packets:
+        enabled: yes
+        filename: /var/log/suricata/packet_stats.log
+        append: yes
+
+  streaming-security.rules: |
+    # HLS Streaming Security Rules - Focused on streaming protection only
+
+    # === HLS PLAYLIST ATTACKS ===
+
+    # Detect HLS playlist path traversal attempts
+    alert http $EXTERNAL_NET any -> $HOME_NET $HTTP_PORTS (msg:"STREAMING HLS Playlist path traversal"; flow:established,to_server; content:"GET"; http_method; content:".m3u8"; http_uri; content:"../"; http_uri; sid:1000001; rev:1;)
+
+    # Detect excessive HLS playlist requests (DDoS protection)
+    alert http $EXTERNAL_NET any -> $HOME_NET $HTTP_PORTS (msg:"STREAMING Excessive HLS requests"; flow:established,to_server; content:"GET"; http_method; content:".m3u8"; http_uri; threshold:type both, track by_src, count 100, seconds 60; sid:1000002; rev:1;)
+
+    # === TS SEGMENT ATTACKS ===
+
+    # Detect TS segment path traversal
+    alert http $EXTERNAL_NET any -> $HOME_NET $HTTP_PORTS (msg:"STREAMING TS segment path traversal"; flow:established,to_server; content:"GET"; http_method; content:".ts"; http_uri; content:"../"; http_uri; sid:1000003; rev:1;)
+
+    # Detect excessive TS segment requests
+    alert http $EXTERNAL_NET any -> $HOME_NET $HTTP_PORTS (msg:"STREAMING Excessive TS requests"; flow:established,to_server; content:"GET"; http_method; content:".ts"; http_uri; threshold:type both, track by_src, count 200, seconds 60; sid:1000004; rev:1;)
+
+    # === STREAMING ABUSE DETECTION ===
+
+    # Detect video download tools
+    alert http $EXTERNAL_NET any -> $HOME_NET $HTTP_PORTS (msg:"STREAMING Video downloader detected"; flow:established,to_server; content:"GET"; http_method; pcre:"/User-Agent:.*(youtube-dl|yt-dlp|ffmpeg|vlc|wget|curl|aria2)/i"; sid:1000005; rev:1;)
+
+    # Detect suspicious streaming bots
+    alert http $EXTERNAL_NET any -> $HOME_NET $HTTP_PORTS (msg:"STREAMING Bot targeting HLS content"; flow:established,to_server; content:"GET"; http_method; content:"/hls/"; http_uri; pcre:"/User-Agent:.*(bot|crawler|spider|scraper)/i"; sid:1000006; rev:1;)
+
+    # === BANDWIDTH ABUSE ===
+
+    # Detect range request abuse (byte-range attacks)
+    alert http $EXTERNAL_NET any -> $HOME_NET $HTTP_PORTS (msg:"STREAMING Range request abuse"; flow:established,to_server; content:"GET"; http_method; content:"Range:"; http_header; threshold:type both, track by_src, count 50, seconds 60; sid:1000007; rev:1;)
+
+    # Detect concurrent video downloads from same IP
+    alert http $EXTERNAL_NET any -> $HOME_NET $HTTP_PORTS (msg:"STREAMING Multiple concurrent downloads"; flow:established,to_server; content:"GET"; http_method; content:"/videos/"; http_uri; threshold:type both, track by_src, count 5, seconds 60; sid:1000008; rev:1;)
+
+    # === HEALTH CHECK ABUSE ===
+
+    # Detect health check endpoint abuse
+    alert http $EXTERNAL_NET any -> $HOME_NET $HTTP_PORTS (msg:"STREAMING Health check abuse"; flow:established,to_server; content:"GET"; http_method; content:"/health"; http_uri; threshold:type both, track by_src, count 30, seconds 60; sid:1000009; rev:1;)
+
+    # === PROTOCOL ATTACKS ===
+
+    # Detect unusual HTTP methods on streaming endpoints
+    alert http $EXTERNAL_NET any -> $HOME_NET $HTTP_PORTS (msg:"STREAMING Unusual HTTP method"; flow:established,to_server; content:!GET; http_method; content:!HEAD; http_method; content:!OPTIONS; http_method; pcre:"/(hls|videos|health)/"; http_uri; sid:1000010; rev:1;)
+
+    # Detect attempts to access internal GCS paths
+    alert http $EXTERNAL_NET any -> $HOME_NET $HTTP_PORTS (msg:"STREAMING Internal path access attempt"; flow:established,to_server; content:"GET"; http_method; pcre:"/(gcs|storage|bucket|gs:|mnt|var)/i"; http_uri; sid:1000011; rev:1;)
+
+---
+# ConfigMap for Fluent Bit log forwarding
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fluentbit-suricata-config
+  namespace: monitoring
+  labels:
+    app: suricata-ids
+data:
+  fluent-bit.conf: |
+    [SERVICE]
+        Flush         5
+        Log_Level     info
+        Daemon        off
+        Parsers_File  parsers.conf
+        HTTP_Server   On
+        HTTP_Listen   0.0.0.0
+        HTTP_Port     2020
+
+    [INPUT]
+        Name              tail
+        Path              /var/log/suricata/eve.json
+        Parser            json
+        Tag               suricata.alerts
+        Refresh_Interval  5
+        Mem_Buf_Limit     50MB
+        Skip_Long_Lines   On
+
+    [INPUT]
+        Name              tail
+        Path              /var/log/suricata/fast.log
+        Tag               suricata.fast
+        Refresh_Interval  10
+        Mem_Buf_Limit     10MB
+
+    [INPUT]
+        Name              tail
+        Path              /var/log/suricata/suricata.log
+        Tag               suricata.system
+        Refresh_Interval  30
+        Mem_Buf_Limit     10MB
+
+    [FILTER]
+        Name    modify
+        Match   suricata.*
+        Add     cluster_name uporto-cd-gke
+        Add     node_name ${NODE_NAME}
+        Add     component suricata-ids
+
+    [FILTER]
+        Name    grep
+        Match   suricata.alerts
+        Regex   event_type (alert|anomaly|flow|http|dns|tls)
+
+    [OUTPUT]
+        Name  stdout
+        Match suricata.fast
+        Format json_lines
+
+    [OUTPUT]
+        Name  stdout
+        Match suricata.alerts
+        Format json_lines
+
+    [OUTPUT]
+        Name                 stackdriver
+        Match                suricata.*
+        google_service_credentials /dev/null
+        k8s_cluster_name     uporto-cd-gke
+        k8s_cluster_location ${NODE_NAME}
+        labels_key           labels
+        severity_key         severity
+
+---
+# Service for accessing Suricata metrics
+apiVersion: v1
+kind: Service
+metadata:
+  name: suricata-ids-metrics
+  namespace: monitoring
+  labels:
+    app: suricata-ids
+    component: metrics
+spec:
+  selector:
+    app: suricata-ids
+  ports:
+    - name: fluent-bit-http
+      port: 2020
+      targetPort: 2020
+      protocol: TCP
+  type: ClusterIP
+---
+# DaemonSet for Suricata IDS
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: suricata-ids
+  namespace: monitoring
+  labels:
+    app: suricata-ids
+    component: security
+    k8s-app: suricata-ids
+spec:
+  selector:
+    matchLabels:
+      app: suricata-ids
+  template:
+    metadata :
+      labels :
+        app : suricata-ids
+        component : security
+      annotations :
+        kubectl.kubernetes.io/restartedAt : "{{ ansible_date_time.iso8601 }}"
+    spec:
+      serviceAccountName: suricata-ids
+      hostNetwork: true
+      hostPID: false
+      dnsPolicy: ClusterFirstWithHostNet
+
+      # Node selector to avoid deployment on control plane nodes if needed
+      nodeSelector:
+        kubernetes.io/os: linux
+
+      # Tolerations for nodes
+      tolerations:
+        - key: node-role.kubernetes.io/master
+          effect: NoSchedule
+        - key: node-role.kubernetes.io/control-plane
+          effect: NoSchedule
+        - operator: Exists
+          effect: NoExecute
+        - operator: Exists
+          effect: NoSchedule
+
+      initContainers:
+        # Update Suricata rules
+        - name: rule-updater
+          image: jasonish/suricata:latest
+          command:
+            - /bin/sh
+            - -c
+            - |
+              echo "Updating Suricata rules..."
+              suricata-update --no-test --no-reload || echo "Rule update failed, continuing with local rules"
+              echo "Rules update completed"
+          volumeMounts:
+            - name: suricata-rules
+              mountPath: /var/lib/suricata/rules
+          securityContext:
+            runAsUser: 0
+            capabilities:
+              add:
+                - NET_ADMIN
+
+      containers:
+        # Main Suricata container
+        - name: suricata
+          image: jasonish/suricata:latest
+          imagePullPolicy: Always
+
+          securityContext:
+            privileged: true
+            runAsUser: 0
+            capabilities:
+              add:
+                - NET_ADMIN
+                - NET_RAW
+                - SYS_NICE
+                - SYS_ADMIN
+
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "100m"
+            limits:
+              memory: "1Gi"
+              cpu: "300m"
+
+          env:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: NODE_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.hostIP
+
+          volumeMounts:
+            - name: suricata-config
+              mountPath: /etc/suricata/suricata.yaml
+              subPath: suricata.yaml
+              readOnly: true
+            - name: suricata-rules-config
+              mountPath: /etc/suricata/rules/streaming-security.rules
+              subPath: streaming-security.rules
+              readOnly: true
+            - name: suricata-rules
+              mountPath: /var/lib/suricata/rules
+            - name: suricata-logs
+              mountPath: /var/log/suricata
+            - name: dev
+              mountPath: /dev
+            - name: proc
+              mountPath: /host/proc
+              readOnly: true
+            - name: sys
+              mountPath: /host/sys
+              readOnly: true
+            - name: run
+              mountPath: /var/run
+
+          args:
+            - -c
+            - /etc/suricata/suricata.yaml
+            - --af-packet
+            - -i
+            - eth0
+            - -v
+
+          livenessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - "pgrep suricata && test -f /var/log/suricata/suricata.log"
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+
+          readinessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - "test -f /var/log/suricata/eve.json && test -s /var/log/suricata/eve.json"
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 2
+
+        # Log forwarder container (Fluent Bit)
+        - name: log-forwarder
+          image: fluent/fluent-bit:2.2
+
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "128Mi"
+              cpu: "100m"
+
+          volumeMounts:
+            - name: suricata-logs
+              mountPath: /var/log/suricata
+              readOnly: true
+            - name: fluentbit-config
+              mountPath: /fluent-bit/etc/fluent-bit.conf
+              subPath: fluent-bit.conf
+              readOnly: true
+
+          env:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: CLUSTER_NAME
+              value: "uporto-cd-gke"
+
+      volumes:
+        - name: suricata-config
+          configMap:
+            name: suricata-config
+        - name: suricata-rules-config
+          configMap:
+            name: suricata-config
+        - name: suricata-rules
+          emptyDir: {}
+        - name: suricata-logs
+          emptyDir:
+            sizeLimit: 1Gi
+        - name: dev
+          hostPath:
+            path: /dev
+            type: Directory
+        - name: proc
+          hostPath:
+            path: /proc
+            type: Directory
+        - name: sys
+          hostPath:
+            path: /sys
+            type: Directory
+        - name: run
+          hostPath:
+            path: /var/run
+            type: Directory
+        - name: fluentbit-config
+          configMap:
+            name: fluentbit-suricata-config
+

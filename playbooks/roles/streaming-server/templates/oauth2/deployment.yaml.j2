@@ -1,0 +1,107 @@
+---
+# OAuth2 Proxy Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: oauth2-proxy
+  namespace: {{ app_namespace }}
+  labels:
+    app: oauth2-proxy
+    region: {{ bastion_region }}
+spec:
+  replicas: {{ oauth_proxy_replicas | default('2') }}
+  selector:
+    matchLabels:
+      app: oauth2-proxy
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: oauth2-proxy
+        region: {{ bastion_region }}
+    spec:
+      # Prefer different nodes for HA
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app
+                      operator: In
+                      values:
+                        - oauth2-proxy
+                topologyKey: kubernetes.io/hostname
+
+      containers:
+        - name: oauth2-proxy
+          image: "quay.io/oauth2-proxy/oauth2-proxy:{{ oauth_proxy_version | default('v7.4.0') }}"
+          args:
+            - --provider=google
+            - --email-domain=*
+            - --upstream=http://streaming-server-mci.streaming.svc.cluster.local:80
+            - --http-address=0.0.0.0:4180
+            - --cookie-secure=true
+            - --cookie-domain=.{{ domain_name }}
+            - --whitelist-domain=.{{ domain_name }}
+            - --redirect-url=https://admin.{{ domain_name }}/oauth2/callback
+            - --set-xauthrequest=true
+            - --pass-access-token=true
+            - --pass-user-headers=true
+            - --pass-authorization-header=true
+            - --skip-provider-button=false
+            - --scope=openid email profile
+            - --cookie-expire=24h
+            - --cookie-refresh=1h
+            - --silence-ping-logging=true
+            - --request-logging=false
+            - --standard-logging=true
+            - --auth-logging=true
+          env:
+            - name: OAUTH2_PROXY_CLIENT_ID
+              value: "{{ oauth_client_id }}"
+            - name: OAUTH2_PROXY_CLIENT_SECRET
+              value: "{{ oauth_client_secret }}"
+            - name: OAUTH2_PROXY_COOKIE_SECRET
+              value: "b02ab5ade9a087745e3d1971f9939545"
+          ports:
+            - containerPort: 4180
+              name: http
+              protocol: TCP
+          resources:
+            requests:
+              memory: "{{ oauth_proxy_memory_request | default('64Mi') }}"
+              cpu: "{{ oauth_proxy_cpu_request | default('50m') }}"
+            limits:
+              memory: "{{ oauth_proxy_memory_limit | default('128Mi') }}"
+              cpu: "{{ oauth_proxy_cpu_limit | default('100m') }}"
+          livenessProbe:
+            httpGet:
+              path: /ping
+              port: 4180
+              scheme: HTTP
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /ping
+              port: 4180
+              scheme: HTTP
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 2
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 2000
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL

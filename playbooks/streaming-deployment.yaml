@@ -6,17 +6,17 @@
   become: yes
   tags: ['phase1', 'setup']
   roles:
-    - common
-    - role: gcloud
-      when: inventory_hostname in groups['admin']
-    - role: content-manager
-      when: inventory_hostname in groups['admin']
+   # - common
+  #  - role: gcloud
+   #   when: inventory_hostname in groups['admin']
+   # - role: content-manager
+    #  when: inventory_hostname in groups['admin']
     - role: admin-webapp
       when: inventory_hostname in groups['admin']
-    - role: cold-autoscaler
-      when: inventory_hostname in groups['admin']
-    - role: bastion
-      when: inventory_hostname in groups['bastions']
+   # - role: cold-autoscaler
+    #  when: inventory_hostname in groups['admin']
+   # - role: bastion
+    #  when: inventory_hostname in groups['bastions']
 
 - name: Phase 2 - Deploy Streaming Application
   hosts: bastions
@@ -30,49 +30,49 @@
       debug:
         msg: |
           Is cold cluster: {{ is_cold_cluster }}
-#
-#    - name: Create namespace
-#      k8s:
-#        name: streaming
-#        api_version: v1
-#        kind: Namespace
-#        state: present
-#
-#    - name: Deploy ConfigMaps
-#      include_role:
-#        name: streaming-server
-#        tasks_from: deploy-configmap
-#
-#    # Deploy with different strategies for hot vs cold
-#    - name: Deploy streaming server (hot cluster)
-#      include_role:
-#        name: streaming-server
-#        tasks_from: deploy-deployment
-#      vars:
-#        initial_replicas: 2
-#        wait_for_rollout: true
-#        rollout_timeout: 300
-#      when: not is_cold_cluster
-#
-#    - name: Deploy streaming server (cold cluster - may fail)
-#      include_role:
-#        name: streaming-server
-#        tasks_from: deploy-deployment
-#      vars:
-#        initial_replicas: 1
-#        wait_for_rollout: false  # Don't wait for rollout on cold clusters
-#        rollout_timeout: 60
-#      when: is_cold_cluster
-#      ignore_errors: yes
-#      register: cold_deployment_result
-#
-#    - name: Handle cold cluster deployment failure
-#      debug:
-#        msg: |
-#          Cold cluster deployment result: {{ 'SUCCESS' if cold_deployment_result is succeeded else 'FAILED' }}
-#          This is expected if cluster has 0 nodes.
-#          Deployment will succeed when autoscaler brings up nodes.
-#      when: cold_deployment_result is failed
+
+    - name: Create namespace
+      k8s:
+        name: streaming
+        api_version: v1
+        kind: Namespace
+        state: present
+
+    - name: Deploy ConfigMaps
+      include_role:
+        name: streaming-server
+        tasks_from: deploy-configmap
+
+    # Deploy with different strategies for hot vs cold
+    - name: Deploy streaming server (hot cluster)
+      include_role:
+        name: streaming-server
+        tasks_from: deploy-deployment
+      vars:
+        initial_replicas: 2
+        wait_for_rollout: true
+        rollout_timeout: 300
+      when: not is_cold_cluster
+
+    - name: Deploy streaming server (cold cluster - may fail)
+      include_role:
+        name: streaming-server
+        tasks_from: deploy-deployment
+      vars:
+        initial_replicas: 1
+        wait_for_rollout: false  # Don't wait for rollout on cold clusters
+        rollout_timeout: 60
+      when: is_cold_cluster
+      ignore_errors: yes
+      register: cold_deployment_result
+
+    - name: Handle cold cluster deployment failure
+      debug:
+        msg: |
+          Cold cluster deployment result: {{ 'SUCCESS' if cold_deployment_result is succeeded else 'FAILED' }}
+          This is expected if cluster has 0 nodes.
+          Deployment will succeed when autoscaler brings up nodes.
+      when: cold_deployment_result is failed
 
 
     - name : Deploy Nginx Ingress
@@ -80,19 +80,17 @@
         name : streaming-server
         tasks_from : deploy-ingress
 
-#    - name: Deploy HPA for automatic scaling
-#      include_role:
-#          name: streaming-server
-#          tasks_from: deploy-hpa
-#      when: enable_hpa | default(true)
-#      ignore_errors: yes  # HPA might fail if no pods exist yet
-
-- name: Phase 3 - Verification
-  hosts: bastion-europe-west2
-  become: yes
-  tags: ['phase3', 'verify']
-  tasks:
-    - name: Verify deployment
+    - name: Deploy HPA for automatic scaling
       include_role:
-        name: streaming-server
-        tasks_from: verify-deployment
+          name: streaming-server
+          tasks_from: deploy-hpa
+      ignore_errors: yes  # HPA might fail if no pods exist yet
+
+- name: Phase 3 - Monitoring
+  hosts: bastions
+  become: yes
+  tags: ['phase3', 'monitoring']
+  tasks:
+    - name: Deploy Suricata for monitoring
+      include_role:
+        name: suricata-k8s

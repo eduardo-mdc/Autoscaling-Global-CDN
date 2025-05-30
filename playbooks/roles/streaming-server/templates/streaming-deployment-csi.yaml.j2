@@ -28,6 +28,7 @@ spec:
       labels:
         app: {{ app_name }}
       annotations:
+        kubectl.kubernetes.io/restartedAt: "{{ ansible_date_time.iso8601 }}"
         # CRITICAL: Enable GCS FUSE volumes
         gke-gcsfuse/volumes: "true"
         # Reduced ephemeral storage limit for e2-medium nodes

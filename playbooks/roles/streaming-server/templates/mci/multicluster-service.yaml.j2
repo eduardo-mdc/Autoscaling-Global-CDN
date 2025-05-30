@@ -1,12 +1,33 @@
 apiVersion: networking.gke.io/v1
 kind: MultiClusterService
 metadata:
+  name: oauth2-proxy-mcs
+  namespace: {{ app_namespace }}
+  labels:
+    app: oauth2-proxy
+  annotations:
+    cloud.google.com/backend-config: '{"ports": {"4180":"{{ project_name }}-oauth2-backend-config"}}'
+spec:
+  template:
+    spec:
+      selector:
+        app: oauth2-proxy
+      ports:
+        - name: http
+          protocol: TCP
+          port: 4180
+          targetPort: 4180
+
+---
+apiVersion: networking.gke.io/v1
+kind: MultiClusterService
+metadata:
   name: {{ app_name }}-mcs
   namespace: {{ app_namespace }}
   labels:
     app: {{ app_name }}
   annotations:
-    cloud.google.com/backend-config: '{"ports": {"80":"{{ project_name }}-backend-config"}}'
+    cloud.google.com/backend-config: '{"ports": {"80":"{{ project_name }}-streaming-backend-config"}}'
 spec:
   template:
     spec:
@@ -15,5 +36,5 @@ spec:
       ports:
         - name: http
           protocol: TCP
-          port: 80  # Changed back to port 80
+          port: 80
           targetPort: 80

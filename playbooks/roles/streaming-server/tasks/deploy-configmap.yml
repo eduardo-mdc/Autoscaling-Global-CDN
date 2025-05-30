@@ -2,6 +2,14 @@
 # Deploy ConfigMaps for HLS streaming
 # File: playbooks/roles/streaming-server/tasks/deploy-configmap.yml
 
+- name: Get current region from bastion hostname
+  shell: "hostname | grep -o 'bastion-[a-z0-9-]*' | cut -d'-' -f2-"
+  register: current_region
+
+- name: Set bastion region fact
+  set_fact:
+    current_region: "{{ current_region.stdout }}"
+
 - name: Create manifests directory if it doesn't exist
   file:
     path: "{{ manifests_dir }}"

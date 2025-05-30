@@ -168,7 +168,7 @@ extra_annotations:
 # OAuth2 Proxy Configuration
 enable_oauth2_auth: true
 oauth_client_id: "313506890289-306orl15c02jl7henbtc5c7ln094b0fa.apps.googleusercontent.com"
-oauth_client_secret: "GOCSPX-vCrhDSDzxl6zcxIMGTm5d4f9xhV"
+oauth_client_secret: "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"
 # OAuth2 Proxy resource settings
 oauth_proxy_replicas: 2
 oauth_proxy_version: "v7.4.0"
