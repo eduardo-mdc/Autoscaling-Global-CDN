@@ -267,3 +267,84 @@ module "fleet" {
   # Ensure all clusters are created first
   depends_on = [module.gke_hot, module.gke_cold]
 }
+
+# Create WAF security policy with Cloud Armor
+module "waf" {
+  source = "./modules/waf"
+  project_id   = var.project_id
+  project_name = var.project_name
+  name         = "${var.project_name}-security-policy"
+  description  = "WAF security policy to protect against common web attacks"
+  
+  # Default configurations
+  default_rule_action = "allow"
+  blocked_ips         = []
+  
+  # Enable protection features
+  enable_xss_protection            = true
+  enable_sqli_protection           = true
+  enable_rce_protection            = true
+  enable_lfi_protection            = true
+  enable_protocol_attack_protection = true
+  enable_scanner_protection        = true
+  
+  # Rate limiting
+  enable_rate_limiting   = true
+  rate_limit_threshold   = 100
+  
+  # Geo restrictions (disabled by default)
+  enable_geo_restriction  = false
+  geo_restriction_regions = []
+}
+
+# Create Cloud IDS for each region
+module "ids" {
+  source = "./modules/ids"
+  project_id   = var.project_id
+  project_name = var.project_name
+  regions      = var.regions
+  zones        = var.zones
+  severity     = "INFORMATIONAL"
+  
+  # Network configuration for each region
+  network_self_links = {
+    for region, network in module.network : region => network.network_self_link
+  }
+  
+  subnet_self_links = {
+    for region, network in module.network : region => network.subnet_self_link
+  }
+  
+  # IDS configuration
+  ids_instance_name_prefix = "${var.project_name}-ids"
+  enable_packet_mirroring  = true
+  
+  # Optional packet mirroring configuration
+  packet_mirroring_tags      = []
+  packet_mirroring_cidr_ranges = []
+  depends_on = [module.gke_hot, module.gke_cold]
+}
+
+# Create monitoring dashboards for load balance
+
+# Create DNS zone and records
+module "dns" {
+  source = "./modules/dns"
+  project_id   = var.project_id
+  project_name = var.project_name
+  domain_name  = var.domain_name
+  description  = "Managed DNS zone for ${var.project_name}"
+  
+  # Record configuration
+  load_balancer_ip = module.loadbalancer.load_balancer_ip
+  grafana_vm_ip    = module.admin.admin_public_ip
+  
+  # DNS configuration
+  ttl           = 300
+  enable_dnssec = true
+  is_private_zone = false
+  
+  # Only create DNS resources if domain_name is provided
+  count = var.domain_name != "" ? 1 : 0
+  depends_on = [module.loadbalancer, module.admin]
+}

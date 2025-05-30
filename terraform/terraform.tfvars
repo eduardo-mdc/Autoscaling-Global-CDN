@@ -1,7 +1,7 @@
 project_id          = "uporto-cd"
 project_name        = "uporto-cd"
-credentials_file    = "~/terraform-sa.json"
-ssh_public_key_path = "/home/eduardo-mdc/.ssh/id_rsa.pub"
+credentials_file    = "/Users/mar/Downloads/terraform-sa.json"
+ssh_public_key_path = "/Users/mar/.ssh/id_rsa.pub"
 admin_username      = "ubuntu"
 min_nodes           = 1
 max_nodes           = 3
