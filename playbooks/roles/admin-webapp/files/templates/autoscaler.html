@@ -52,6 +52,25 @@
         <!-- Control Panel -->
         <div class="bg-gray-800 rounded-lg p-6">
             <h2 class="text-xl font-semibold mb-4">🎛️ Scaling Controls</h2>
+            <!-- Background Autoscaler Status -->
+            <div class="mb-6 p-4 bg-gray-700/50 rounded-lg">
+                <div class="flex justify-between items-center mb-3">
+                    <span class="font-medium">🤖 Background Autoscaler</span>
+                    <div class="flex items-center gap-2">
+                        <div id="bg-status-indicator" class="w-3 h-3 bg-gray-400 rounded-full"></div>
+                        <span id="bg-status-text" class="text-sm text-gray-400">Checking...</span>
+                    </div>
+                </div>
+                <div class="flex gap-2">
+                    <button onclick="controlBackgroundAutoscaler('start')" class="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-sm font-medium transition-colors">
+                        Start Auto
+                    </button>
+                    <button onclick="controlBackgroundAutoscaler('stop')" class="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-sm font-medium transition-colors">
+                        Stop Auto
+                    </button>
+                </div>
+                <p class="text-xs text-gray-400 mt-2">Automatically checks and scales every 5 minutes</p>
+            </div>
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <button onclick="triggerScaling('auto')" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium transition-colors">
                     🤖 Auto Scale
@@ -221,6 +240,9 @@
                 document.getElementById('loading').style.display = 'none';
                 document.getElementById('content').style.display = 'block';
                 updateStatusIndicator('online', 'Online');
+
+                // Also load background autoscaler status
+                loadBackgroundStatus();
             } else {
                 throw new Error(data.error || 'Unknown error');
             }
@@ -229,6 +251,49 @@
             document.getElementById('error').style.display = 'block';
             document.getElementById('error-message').textContent = error.message;
             updateStatusIndicator('error', 'Error');
+        }
+    }
+
+    async function loadBackgroundStatus() {
+        try {
+            const response = await fetch('/api/autoscaler/background/status');
+            const data = await response.json();
+
+            const indicator = document.getElementById('bg-status-indicator');
+            const statusText = document.getElementById('bg-status-text');
+
+            if (data.running) {
+                indicator.className = 'w-3 h-3 bg-green-400 rounded-full animate-pulse';
+                statusText.textContent = 'Running (5min intervals)';
+            } else {
+                indicator.className = 'w-3 h-3 bg-gray-400 rounded-full';
+                statusText.textContent = 'Stopped';
+            }
+        } catch (error) {
+            console.error('Failed to load background status:', error);
+        }
+    }
+
+    async function controlBackgroundAutoscaler(action) {
+        try {
+            const response = await fetch('/api/autoscaler/background', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ action: action })
+            });
+
+            const data = await response.json();
+
+            if (data.status === 'success') {
+                loadBackgroundStatus();
+                addStatusMessage(`Background autoscaler ${action}ed`, 'success');
+            } else {
+                addStatusMessage(`Failed to ${action} background autoscaler: ${data.error}`, 'error');
+            }
+        } catch (error) {
+            addStatusMessage(`Error controlling background autoscaler: ${error.message}`, 'error');
         }
     }
 
@@ -484,8 +549,8 @@
         });
     }
 
-    // Auto-refresh every 30 seconds
-    setInterval(loadStatus, 30000);
+    // Auto-refresh every 5 minutes (300000 ms)
+    setInterval(loadStatus, 300000);
 
     // Initial load
     loadStatus();

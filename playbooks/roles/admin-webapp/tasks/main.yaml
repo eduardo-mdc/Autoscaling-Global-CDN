@@ -46,6 +46,7 @@
     name:
       - flask
       - werkzeug
+      - geoip2
     executable: pip3
 
 - name: Create Flask app directory

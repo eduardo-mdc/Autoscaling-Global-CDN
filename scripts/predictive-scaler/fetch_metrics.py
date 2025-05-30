@@ -36,7 +36,7 @@ except ImportError:
 PROJECT_ID = os.environ.get('PROJECT_ID', 'uporto-cd')
 REGIONS = ['europe-west2', 'us-south1', 'asia-southeast1']
 OUTPUT_DIR = Path('ml_training_data')
-GEOIP_DIR = Path('../geoip_data')
+GEOIP_DIR = Path('geoip_data')
 GEOIP_DB_URL = 'https://github.com/P3TERX/GeoLite.mmdb/raw/download/GeoLite2-City.mmdb'
 
 # Log queries for different components

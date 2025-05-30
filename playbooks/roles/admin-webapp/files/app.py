@@ -7,7 +7,16 @@ from flask import (
     render_template, flash, send_from_directory, jsonify
 )
 from werkzeug.utils import secure_filename
-from datetime import datetime
+import subprocess
+import json
+from datetime import datetime, timedelta, timezone
+import geoip2.database
+import struct
+import socket
+from pathlib import Path
+import threading
+import time
+import atexit
 
 # Import the cold autoscaler module
 import cold_autoscaler
@@ -44,6 +53,98 @@ def make_hls(input_filepath, output_dir):
     ]
     subprocess.check_call(cmd)
     return playlist
+
+
+# Add this global variable after the Flask app initialization
+background_scheduler = None
+autoscaler_enabled = True
+
+# Add these functions before the routes section
+
+def background_autoscaler_check():
+    """Background function that runs autoscaler checks every 5 minutes"""
+    global autoscaler_enabled
+
+    while autoscaler_enabled:
+        try:
+            app.logger.info("🤖 Running automatic autoscaler check...")
+
+            # Get traffic and latency data
+            traffic_data = cold_autoscaler.get_mock_traffic_data()
+            latency_data = cold_autoscaler.get_mock_latency_data()
+            geographic_analysis = cold_autoscaler.analyze_geographic_traffic(traffic_data)
+            scale_decision = cold_autoscaler.should_scale_based_on_traffic(geographic_analysis, latency_data)
+
+            current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+            if scale_decision['should_scale']:
+                app.logger.info(f"📈 Autoscaler decision: {scale_decision['reason']}")
+
+                # Execute scaling
+                for region in scale_decision['target_regions']:
+                    app.logger.info(f"🔄 Auto-scaling {region} to {scale_decision['target_nodes']} nodes")
+                    result = cold_autoscaler.scale_cluster_nodes(region, scale_decision['target_nodes'])
+
+                    if result['status'] == 'error':
+                        app.logger.error(f"❌ Failed to scale {region}: {result.get('error', 'Unknown error')}")
+                    elif result['status'] == 'no_change':
+                        app.logger.info(f"ℹ️  {region}: {result.get('message', 'No change needed')}")
+                    else:
+                        app.logger.info(f"✅ {region}: {result.get('message', 'Scaling completed')}")
+
+            else:
+                app.logger.info(f"📊 No scaling needed: {scale_decision['reason']}")
+
+                # Check if cold regions need to be scaled to zero
+                for region in cold_autoscaler.COLD_REGIONS:
+                    cluster_info = cold_autoscaler.get_cluster_info(region)
+                    if cluster_info and cluster_info['status'] == 'RUNNING':
+                        # Check if cluster has nodes that could be scaled down
+                        for pool in cluster_info.get('node_pools', []):
+                            autoscaling = pool.get('autoscaling', {})
+                            current_max = autoscaling.get('maxNodeCount', 0)
+
+                            if current_max > 0:
+                                app.logger.info(f"🔄 Setting {region} to scale-to-zero (current max: {current_max})")
+                                result = cold_autoscaler.scale_cluster_nodes(region, 0)
+
+                                if result['status'] == 'no_change':
+                                    app.logger.info(f"ℹ️  {region}: Already at scale-to-zero")
+                                elif result['status'] != 'error':
+                                    app.logger.info(f"✅ {region}: Set to scale-to-zero")
+                                else:
+                                    app.logger.error(f"❌ Failed to scale down {region}")
+
+                                break  # Only need to check first pool
+
+            # Log summary
+            app.logger.info(f"📋 Autoscaler check completed at {current_time}")
+            app.logger.info(f"📊 Traffic: Asia {geographic_analysis['regional_percentages']['asia']:.1f}% ({geographic_analysis['regional_traffic']['asia']}), Total {geographic_analysis['total_requests']}")
+            app.logger.info(f"⏱️  Latency: {latency_data['hot_regions_avg_latency']}ms avg")
+
+        except Exception as e:
+            app.logger.error(f"💥 Background autoscaler error: {str(e)}")
+
+        # Wait 5 minutes (300 seconds) before next check
+        time.sleep(300)
+
+def start_background_autoscaler():
+    """Start the background autoscaler thread"""
+    global background_scheduler
+
+    if background_scheduler is None or not background_scheduler.is_alive():
+        background_scheduler = threading.Thread(target=background_autoscaler_check, daemon=True)
+        background_scheduler.start()
+        app.logger.info("🚀 Background autoscaler started (checks every 5 minutes)")
+
+def stop_background_autoscaler():
+    """Stop the background autoscaler"""
+    global autoscaler_enabled, background_scheduler
+
+    autoscaler_enabled = False
+    if background_scheduler and background_scheduler.is_alive():
+        app.logger.info("🛑 Stopping background autoscaler...")
+        background_scheduler.join(timeout=5)
 
 # -----------------------------------------------------------------------------
 # Routes
@@ -139,21 +240,39 @@ def upload():
 
 @app.route('/delete/video/<filename>', methods=['POST'])
 def delete_video(filename):
-    target = os.path.join(MOUNT_PATH, 'videos', filename)
-    if os.path.isfile(target):
-        os.remove(target)
-        try:
-            result = subprocess.run(['/opt/content/scripts/sync-to-regions.sh'],
-                                    check=True,
-                                    capture_output=True,
-                                    text=True)
-            app.logger.info(f"Sync script output: {result.stdout}")
-            if result.stderr:
-                app.logger.warning(f"Sync script stderr: {result.stderr}")
-            flash(f'Deleted video: {filename}', 'warning')
-        except subprocess.SubprocessError as e:
-            app.logger.error(f"Sync script failed: {e}")
-            flash(f'Deleted video, but sync to regions failed: {e}', 'danger')
+    target_video = os.path.join(MOUNT_PATH, 'videos', filename)
+    filename_no_ext, _ = os.path.splitext(filename)
+    target_hls = os.path.join(MOUNT_PATH, 'hls', filename_no_ext, 'playlist.m3u8')
+    target_playlist0 = os.path.join(MOUNT_PATH, 'hls', filename_no_ext, 'playlist0.ts')
+    target_playlist1 = os.path.join(MOUNT_PATH, 'hls', filename_no_ext, 'playlist1.ts')
+    target_dir = os.path.join(MOUNT_PATH, 'hls', filename_no_ext)
+    if os.path.isdir(target_dir):
+        shutil.rmtree(target_dir)
+        app.logger.info(f"Deleted HLS directory: {target_dir}")
+    if os.path.isfile(target_playlist0):
+        os.remove(target_playlist0)
+        app.logger.info(f"Deleted HLS file: {target_playlist0}")
+    if os.path.isfile(target_playlist1):
+        os.remove(target_playlist1)
+        app.logger.info(f"Deleted HLS file: {target_playlist1}")
+    if os.path.isfile(target_hls):
+        os.remove(target_hls)
+        app.logger.info(f"Deleted HLS playlist: {target_hls}")
+    if os.path.isfile(target_video):
+        os.remove(target_video)
+
+    try:
+        result = subprocess.run(['/opt/content/scripts/sync-to-regions.sh'],
+                                check=True,
+                                capture_output=True,
+                                text=True)
+        app.logger.info(f"Sync script output: {result.stdout}")
+        if result.stderr:
+            app.logger.warning(f"Sync script stderr: {result.stderr}")
+        flash(f'Deleted video: {filename}', 'warning')
+    except subprocess.SubprocessError as e:
+        app.logger.error(f"Sync script failed: {e}")
+
     else:
         flash('Video not found', 'danger')
     return redirect(url_for('index'))
@@ -189,9 +308,9 @@ def autoscaler_dashboard():
 def autoscaler_status():
     """Get current cluster status and scaling analysis"""
     try:
-        # Get traffic and latency data
-        traffic_data = cold_autoscaler.get_mock_traffic_data()
-        latency_data = cold_autoscaler.get_mock_latency_data()
+        # Get traffic and latency data (REAL DATA)
+        traffic_data = cold_autoscaler.get_mock_traffic_data()  # This now calls real data
+        latency_data = cold_autoscaler.get_real_latency_data()  # This gets real latency
 
         # Analyze traffic
         geographic_analysis = cold_autoscaler.analyze_geographic_traffic(traffic_data)
@@ -211,6 +330,7 @@ def autoscaler_status():
             'latency_data': latency_data,
             'scale_decision': scale_decision,
             'clusters': clusters_info,
+            'data_source': 'real' if len(traffic_data) > 0 else 'mock',  # Indicate data source
             'thresholds': {
                 'asia_requests_upper': cold_autoscaler.ASIA_REQUESTS_THRESHOLD_UPPER,
                 'asia_percentage_upper': cold_autoscaler.ASIA_REQUESTS_PERCENTAGE_THRESHOLD_UPPER,
@@ -350,5 +470,6 @@ def autoscaler_scale():
         }), 500
 
 if __name__ == '__main__':
+    start_background_autoscaler()
     port = int(os.environ.get('PORT', 80))
     app.run(host='0.0.0.0', port=port, debug=True)
