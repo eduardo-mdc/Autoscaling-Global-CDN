@@ -19,6 +19,8 @@ A multi-region content delivery network on Google Cloud Platform featuring ML-dr
 - Real-time traffic analysis using vector embeddings and RAG
 - Suricata IDS with AI-enhanced threat detection
 
+![Architecture Diagram](docs/architecture.png)
+
 ## Quick Start
 
 1. **Deploy Infrastructure**
