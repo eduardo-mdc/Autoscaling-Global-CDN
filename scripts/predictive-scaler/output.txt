@@ -1,0 +1,48 @@
+🚀 Starting Predictive Scaling Analysis...
+
+🔧 Setting up AI components...
+✅ Connected to Ollama model: mistral
+
+📊 Loading training data...
+  Loading 342 entries from Load Balancer Access
+  Loading 28 entries from GKE Autoscaling Events
+  Loading 15 entries from Node Pressure Events
+  Loading 156 entries from Backend Service Requests
+  Loading 47 entries from Cluster Events
+  Loading 24 feature vectors
+✅ Loaded 612 total documents
+
+🔍 Creating vector embeddings...
+  Split into 1,247 chunks
+✅ Created vector store with 1,247 embeddings
+
+🤔 Analyzing current metrics for scaling decision...
+
+🎯 Scaling Decision:
+
+RECOMMENDATION: NO_CHANGE
+CONFIDENCE: HIGH
+TARGET_NODES: 0
+
+REASONING:
+- Primary trigger: cost_optimization
+- Key factors:
+  1. Asia traffic at 6.3% (11 requests) falls well below 10% threshold
+  2. Total request volume of 175 is below minimum threshold of 300
+  3. Backend latency at 152ms is within acceptable range (<500ms)
+- Risk assessment: Scaling up would increase costs without performance benefit; current hot regions (Europe 45.1%, Americas 22.3%) are handling traffic efficiently
+
+EXECUTION:
+- Immediate action: Maintain current cold cluster configuration with 0 nodes in asia-southeast1
+- Monitoring: Continue tracking Asia traffic percentage and backend latency every 5 minutes
+- Rollback condition: Scale up if Asia traffic exceeds 50 requests AND 10% of total traffic OR if backend latency exceeds 500ms
+
+The current traffic pattern shows Europe and Americas dominating the workload with 67.4% combined traffic. Asia's 6.3% share (11 requests out of 175 total) does not justify the cost of maintaining dedicated infrastructure in the asia-southeast1 region. The existing hot clusters in europe-west2 and us-south1 are providing adequate coverage with acceptable latency.
+
+Historical patterns from similar scenarios indicate that scaling decisions should prioritize cost efficiency when traffic distribution is heavily skewed toward established hot regions. Previous scaling events during comparable traffic patterns resulted in underutilized resources in cold regions.
+
+💾 Saved decision to: ml_training_data/scaling_decision_20250130_143522.json
+
+✅ Analysis complete!
+📊 Review the scaling recommendation above
+🔧 Execute the suggested actions manually or integrate with automation

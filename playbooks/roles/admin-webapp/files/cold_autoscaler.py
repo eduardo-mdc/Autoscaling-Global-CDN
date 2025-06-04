@@ -396,6 +396,14 @@ def should_scale_based_on_traffic(geographic_analysis, latency_data=None):
             reasons.append(f"Latency below threshold ({hot_latency}ms < {LATENCY_THRESHOLD_UPPER_MS}ms)")
 
         reason = " + ".join(reasons) if reasons else f"Traffic and latency within normal range"
+        # FIX: Add the missing return statement
+        return {
+            'should_scale': False,
+            'reason': reason,
+            'asia_traffic': asia_requests,
+            'asia_percentage': asia_percentage,
+            'hot_latency': hot_latency
+        }
 
 # Replace the existing get_mock_traffic_data function with:
 def get_mock_traffic_data():
